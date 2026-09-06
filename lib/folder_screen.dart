@@ -18,12 +18,17 @@ class FolderScreen extends StatefulWidget {
     required this.deck,
     required this.installed,
     required this.onDeckChanged,
+    required this.onRemoveShortcut,
   });
 
   final DeckCard card;
   final CardDeck deck;
   final List<LaunchableApp> installed;
   final ValueChanged<CardDeck> onDeckChanged;
+
+  /// Deleting is the home screen's job — it owns the store and the undo — but
+  /// this is where a shortcut is long-pressed.
+  final Future<void> Function(LaunchableApp) onRemoveShortcut;
 
   @override
   State<FolderScreen> createState() => _FolderScreenState();
@@ -304,6 +309,14 @@ class _FolderScreenState extends State<FolderScreen> {
         await LauncherBridge.instance.openAppInfo(app.packageName);
       case FileUnder(:final cardId):
         _update(_deck.assign(app.id, cardId));
+      case RemoveShortcut():
+        await widget.onRemoveShortcut(app);
+        // This screen was pushed with a snapshot of the list, so it drops the
+        // shortcut itself rather than waiting to be rebuilt with a new one.
+        if (mounted) {
+          setState(() =>
+              _apps = _apps.where((entry) => entry.id != app.id).toList());
+        }
     }
   }
 }

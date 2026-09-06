@@ -81,11 +81,41 @@ void main() {
       expect(await store.load(), hasLength(2));
     });
 
-    test('remove takes one out', () async {
+    test('remove takes one out and hands it back', () async {
+      // Handed back so a delete can be undone: a shortcut built in another app
+      // is not always easy to make again.
+      final store = SavedShortcutStore();
+      await store.add(StoredShortcut(
+        app: downloads,
+        icon: Uint8List.fromList([5]),
+      ));
+
+      final removed = await store.remove(downloads.id);
+      expect(await store.load(), isEmpty);
+      expect(removed, isNotNull);
+      expect(removed!.app.id, downloads.id);
+      expect(removed.icon, [5], reason: 'the icon must come back too');
+    });
+
+    test('putting a removed one back restores it whole', () async {
+      final store = SavedShortcutStore();
+      await store.add(StoredShortcut(
+        app: downloads,
+        icon: Uint8List.fromList([5]),
+      ));
+      final removed = await store.remove(downloads.id);
+      await store.add(removed!);
+
+      final restored = (await store.load()).single;
+      expect(restored.app.id, downloads.id);
+      expect(restored.icon, [5]);
+    });
+
+    test('removing something absent reports nothing removed', () async {
       final store = SavedShortcutStore();
       await store.add(StoredShortcut(app: downloads));
-      await store.remove(downloads.id);
-      expect(await store.load(), isEmpty);
+      expect(await store.remove('legacy:nothing'), isNull);
+      expect(await store.load(), hasLength(1));
     });
 
     test('unreadable storage is a miss, not a crash', () async {

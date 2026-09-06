@@ -81,11 +81,23 @@ class SavedShortcutStore {
     return updated;
   }
 
-  Future<List<StoredShortcut>> remove(String id) async {
-    final updated =
-        (await load()).where((entry) => entry.app.id != id).toList();
-    await _save(updated);
-    return updated;
+  /// Removes [id] and hands back what was removed, so the caller can offer to
+  /// put it back — a shortcut built in another app is not always easy to make
+  /// again, and a delete with no way back is a harsh thing to hang off a
+  /// long-press.
+  Future<StoredShortcut?> remove(String id) async {
+    final existing = await load();
+    StoredShortcut? removed;
+    final kept = <StoredShortcut>[];
+    for (final entry in existing) {
+      if (entry.app.id == id && removed == null) {
+        removed = entry;
+      } else {
+        kept.add(entry);
+      }
+    }
+    if (removed != null) await _save(kept);
+    return removed;
   }
 
   Future<void> _save(List<StoredShortcut> shortcuts) async {

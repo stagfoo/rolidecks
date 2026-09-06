@@ -448,6 +448,7 @@ class _HomeScreenState extends State<HomeScreen>
           deck: _deck,
           installed: _installed,
           onDeckChanged: _update,
+          onRemoveShortcut: _removeShortcut,
         ),
       ),
     );
@@ -472,7 +473,37 @@ class _HomeScreenState extends State<HomeScreen>
         await LauncherBridge.instance.openAppInfo(app.packageName);
       case FileUnder(:final cardId):
         await _update(_deck.assign(app.id, cardId));
+      case RemoveShortcut():
+        await _removeShortcut(app);
     }
+  }
+
+  /// Deletes a shortcut, and offers to put it back.
+  ///
+  /// One made in another app cannot always be made again — a legacy one is an
+  /// intent that only that app knows how to build — so an undo matters more
+  /// here than a confirmation would.
+  Future<void> _removeShortcut(LaunchableApp app) async {
+    final removed = await _savedShortcuts.remove(app.id);
+    await _update(_deck.unassign(app.id));
+    await _refreshApps();
+    if (!mounted || removed == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: DeckColors.surface,
+        duration: const Duration(seconds: 6),
+        content: Text('Deleted ${app.label}', style: deckText(size: 12)),
+        action: SnackBarAction(
+          label: 'Undo',
+          textColor: const Color(0xFFFF7A3C),
+          onPressed: () async {
+            await _savedShortcuts.add(removed);
+            await _refreshApps();
+          },
+        ),
+      ),
+    );
   }
 
   /// A screen, not a snackbar: the long-press was showing one that evidently

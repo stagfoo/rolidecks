@@ -26,6 +26,12 @@ class FileUnder extends AppMenuChoice {
   final String cardId;
 }
 
+/// Delete a shortcut outright. Only shortcuts can go: an app is removed by
+/// uninstalling it, which is a different thing entirely.
+class RemoveShortcut extends AppMenuChoice {
+  const RemoveShortcut();
+}
+
 /// Where an app gets filed.
 ///
 /// Scrollable and height-capped: the list grows with the deck, and a fixed
@@ -105,13 +111,31 @@ Future<AppMenuChoice?> showAppMenuSheet(
                           onTap: () =>
                               Navigator.pop(context, FileUnder(option.id)),
                         ),
-                    ListTile(
-                      leading: const Icon(Icons.info_outline,
-                          color: DeckColors.textDim),
-                      title: const Text('App info',
-                          style: TextStyle(color: DeckColors.text)),
-                      onTap: () => Navigator.pop(context, const ShowAppInfo()),
-                    ),
+                    // A legacy shortcut has no package of its own — it is an
+                    // intent — so there is no app to show information about.
+                    if (app.packageName.isNotEmpty)
+                      ListTile(
+                        leading: const Icon(Icons.info_outline,
+                            color: DeckColors.textDim),
+                        title: const Text('App info',
+                            style: TextStyle(color: DeckColors.text)),
+                        onTap: () => Navigator.pop(context, const ShowAppInfo()),
+                      ),
+                    if (app.isShortcut)
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline_rounded,
+                            color: Color(0xFFFF6B5A)),
+                        title: const Text('Delete shortcut',
+                            style: TextStyle(color: DeckColors.text)),
+                        subtitle: const Text(
+                          'Removes it from Rolidecks, not from the app it came '
+                          'from',
+                          style:
+                              TextStyle(color: DeckColors.textDim, fontSize: 11),
+                        ),
+                        onTap: () =>
+                            Navigator.pop(context, const RemoveShortcut()),
+                      ),
                   ],
                 ),
               ),
