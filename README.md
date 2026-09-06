@@ -136,6 +136,19 @@ named colours or a few dozen common icons when it opens, then any colour at all
 or all 2,200 icons once you search. Each step only appears when the last was not
 enough.
 
+A card can also wear a **picture**, chosen in the editor. It fills the card and
+fades into the card's own colour towards the bottom — to the colour rather than
+to black, so the name strip sits on exactly what it always did and the
+foreground already chosen for that colour stays correct. A covered card's strip
+therefore looks like every other card's, since the strip is the part that shows.
+
+Pictures are copied into the app's own storage and scaled to 1080px on the way
+in: the picker grants access to one URI that its owner may later revoke, and
+decoding a full-size photo per card would cost more memory than the rest of the
+launcher. They are keyed by card id on disk and read back from there rather than
+stored in the deck — the picker is another app and can outlive this activity, so
+the file arriving *is* the record, with nothing to deliver or lose.
+
 Both grids remember. A custom colour, or an icon found by searching, is
 appended to the grid it was reached from and kept across restarts — picking one
 is deliberate work, and having to redo it for the next card wastes it. Anything

@@ -41,6 +41,11 @@ class _HomeScreenState extends State<HomeScreen>
   /// phone, and doing that per card per frame is a hundred-element sort in the
   /// middle of an animation.
   Map<String, List<LaunchableApp>> _appsByCard = const {};
+
+  /// Card id to picture path, read off disk rather than stored in the deck.
+  /// The picker is another app and can outlive this activity, so the file
+  /// arriving is the record — there is nothing to deliver or lose.
+  Map<String, String> _cardImages = const {};
   int _focused = 0;
   final _scroll = ScrollController();
   StackSpec? _lastSpec;
@@ -95,6 +100,9 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+    if (!mounted) return;
+    // A card deleted in there leaves its picture behind otherwise.
+    await _reloadCardImages();
     if (mounted) setState(() => _focused = _focused.clamp(0, _deck.length - 1));
   }
 
@@ -113,11 +121,13 @@ class _HomeScreenState extends State<HomeScreen>
     // Before the first list is built, so a shortcut made just before the
     // launcher was killed is already in it.
     await _collectPendingShortcuts();
+    final images = await LauncherBridge.instance.cardImages();
     final cached = await _appCache.load();
 
     if (!mounted) return;
     setState(() {
       _deck = deck;
+      _cardImages = images;
       if (cached != null) {
         _installed = cached.apps;
         _appsByCard = _resolveApps(deck, cached.apps);
@@ -180,12 +190,19 @@ class _HomeScreenState extends State<HomeScreen>
   /// Coming back is when a shortcut made in another app is collected.
   Future<void> _resumeRefresh() async {
     final added = await _collectPendingShortcuts();
+    await _reloadCardImages();
     await _refreshApps();
     if (added > 0) {
       _toast(added == 1
           ? 'Shortcut added — find it under all apps'
           : '$added shortcuts added — find them under all apps');
     }
+  }
+
+  Future<void> _reloadCardImages() async {
+    final images = await LauncherBridge.instance.cardImages();
+    if (!mounted) return;
+    setState(() => _cardImages = images);
   }
 
   Future<List<LaunchableApp>> _everything() async {
@@ -379,6 +396,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // card has nothing above, so its rounded top reads correctly
                 // against the background.
                 flushTop: i == spec.focusedIndex && i > 0,
+                imagePath: _cardImages[_deck[i].id],
                 apps: _appsByCard[_deck[i].id] ?? const [],
                 totalInstalled: _installed.length,
                 onTap: () => i == _focused

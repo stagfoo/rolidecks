@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'card_deck.dart';
@@ -33,6 +35,7 @@ class DeckCardView extends StatelessWidget {
     this.lifted = false,
     this.flushTop = false,
     this.topBleed = 0,
+    this.imagePath,
   });
 
   final DeckCard card;
@@ -63,6 +66,9 @@ class DeckCardView extends StatelessWidget {
   /// line, so the background shows through as two dark notches. Squared, the
   /// card in front simply shingles over it.
   final bool flushTop;
+
+  /// A picture for this card, filling it behind everything else.
+  final String? imagePath;
 
   /// Extra height added above the card, hidden behind the card in front.
   ///
@@ -102,23 +108,70 @@ class DeckCardView extends StatelessWidget {
           ],
         ),
         clipBehavior: Clip.antiAlias,
-        child: Padding(
-          // The bleed is background only; the card's contents stay where the
-          // layout put them.
-          padding: EdgeInsets.only(top: topBleed),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: arranging ? const SizedBox() : _body(color, onCard)),
-              _nameStrip(onCard),
-            ],
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (imagePath != null) _picture(color),
+            Padding(
+              // The bleed is background only; the card's contents stay where
+              // the layout put them.
+              padding: EdgeInsets.only(top: topBleed),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                      child: arranging ? const SizedBox() : _body(color, onCard)),
+                  _nameStrip(onCard),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
 
     if (!arranging || card.isAllApps || lifted) return card_;
     return Transform.rotate(angle: wigglePhase, child: card_);
+  }
+
+  /// The card's picture, faded into the card's own colour at the bottom.
+  ///
+  /// Fading to the card colour rather than to black means the name strip sits
+  /// on exactly the colour it always did, so the foreground already chosen for
+  /// that colour stays right and nothing has to be recomputed against the
+  /// picture. It also keeps a covered card's strip looking like every other
+  /// card's, since the strip is the part that shows.
+  Widget _picture(Color color) {
+    return Positioned.fill(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(imagePath!),
+            fit: BoxFit.cover,
+            // Already downscaled on the way in; this keeps the decode to the
+            // size actually drawn.
+            cacheWidth: 1080,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0),
+                  color.withValues(alpha: 0.55),
+                  color,
+                ],
+                stops: const [0.35, 0.7, 1],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// The strip that stays visible when this card is covered.

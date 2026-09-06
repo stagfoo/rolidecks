@@ -229,6 +229,24 @@ class LauncherBridge {
     ];
   }
 
+  /// Opens the system picker so a card can be given a picture. Null when the
+  /// user backed out — or when this activity was rebuilt while the picker was
+  /// up, in which case [cardImages] still finds the file.
+  Future<String?> pickCardImage(String cardId) =>
+      _channel.invokeMethod<String>('pickCardImage', {'cardId': cardId});
+
+  /// The picture each card is wearing, by card id, read off disk.
+  Future<Map<String, String>> cardImages() async {
+    final map = await _channel.invokeMapMethod<Object?, Object?>('cardImages');
+    return {
+      for (final entry in (map ?? const {}).entries)
+        '${entry.key}': '${entry.value}',
+    };
+  }
+
+  Future<void> removeCardImage(String cardId) =>
+      _channel.invokeMethod<void>('removeCardImage', {'cardId': cardId});
+
   /// Seeds the icon cache for a shortcut whose icon came with it rather than
   /// from the platform.
   void primeIcon(String key, Uint8List? bytes) => _iconCache[key] = bytes;

@@ -11,6 +11,7 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -31,6 +32,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.util.Base64
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -52,6 +54,90 @@ class MainActivity : FlutterActivity() {
     private val main = Handler(Looper.getMainLooper())
 
     private val requestCreateShortcut = 4011
+    private val requestCardImage = 4012
+
+    private var pendingImageCard: String? = null
+    private var pendingImageResult: MethodChannel.Result? = null
+
+    private fun cardImagesDir(): File =
+        File(filesDir, "cardimages").apply { mkdirs() }
+
+    private fun cardImageFile(cardId: String): File =
+        File(cardImagesDir(), "${cardId.replace(Regex("[^A-Za-z0-9_-]"), "_")}.jpg")
+
+    /**
+     * The image each card is wearing, keyed by card.
+     *
+     * Read off disk rather than remembered, so a picture that arrived while the
+     * launcher was destroyed — which can happen, the picker is another app — is
+     * found the next time anyone looks, with nothing to deliver.
+     */
+    private fun cardImages(): Map<String, String> {
+        val files = cardImagesDir().listFiles() ?: return emptyMap()
+        return files.filter { it.isFile }.associate {
+            it.nameWithoutExtension to it.absolutePath
+        }
+    }
+
+    private fun pickCardImage(cardId: String, result: MethodChannel.Result) {
+        pendingImageCard = cardId
+        pendingImageResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+        try {
+            startActivityForResult(intent, requestCardImage)
+        } catch (e: Exception) {
+            pendingImageResult = null
+            result.success(null)
+        }
+    }
+
+    /**
+     * Copies the chosen image into the app's own storage, scaled down.
+     *
+     * Copied because the picker grants access to that one URI and the app that
+     * owns it may revoke or delete it; scaled because a card is a few hundred
+     * pixels wide and decoding a 12-megapixel photo for each of them would cost
+     * more memory than the rest of the launcher put together.
+     */
+    private fun storeCardImage(cardId: String, uri: android.net.Uri): String? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+            val target = 1080
+            var sample = 1
+            while (bounds.outWidth / sample > target * 2) sample *= 2
+
+            val decoded = contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(
+                    it,
+                    null,
+                    BitmapFactory.Options().apply { inSampleSize = sample }
+                )
+            } ?: return null
+
+            val scale = target.toFloat() / maxOf(decoded.width, decoded.height)
+            val bitmap = if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    decoded,
+                    (decoded.width * scale).toInt().coerceAtLeast(1),
+                    (decoded.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else {
+                decoded
+            }
+
+            val file = cardImageFile(cardId)
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+            file.absolutePath
+        } catch (e: Throwable) {
+            null
+        }
+    }
 
     /**
      * Results are written here before they are announced.
@@ -208,6 +294,12 @@ class MainActivity : FlutterActivity() {
             "screenMetrics" -> result.success(screenMetrics())
             "shortcutDiagnostics" -> onWorker(result) { shortcutDiagnostics() }
             "takePendingShortcuts" -> result.success(takePendingShortcuts())
+            "pickCardImage" -> pickCardImage(call.argument<String>("cardId") ?: "", result)
+            "cardImages" -> result.success(cardImages())
+            "removeCardImage" -> {
+                cardImageFile(call.argument<String>("cardId") ?: "").delete()
+                result.success(null)
+            }
             "listShortcutMakers" -> onWorker(result) { listShortcutMakers() }
             "createShortcut" -> {
                 createShortcut(
@@ -453,6 +545,27 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == requestCardImage) {
+            val cardId = pendingImageCard
+            val result = pendingImageResult
+            pendingImageCard = null
+            pendingImageResult = null
+
+            val uri = if (resultCode == RESULT_OK) data?.data else null
+            if (cardId == null || uri == null) {
+                result?.success(null)
+                return
+            }
+            worker.execute {
+                val path = storeCardImage(cardId, uri)
+                // The result may be gone if this activity was rebuilt while the
+                // picker was up. The file is on disk either way, and cardImages
+                // finds it.
+                main.post { result?.success(path) }
+            }
+            return
+        }
+
         if (requestCode != requestCreateShortcut) return
         if (resultCode != RESULT_OK || data == null) {
             noteOutcome("picker returned resultCode=$resultCode, data=${data != null}")

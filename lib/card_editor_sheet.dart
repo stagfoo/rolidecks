@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'card_deck.dart';
 import 'card_style.dart';
+import 'launcher_bridge.dart';
 import 'color_picker_screen.dart';
 import 'style_recents.dart';
 import 'icon_picker_screen.dart';
@@ -74,15 +77,47 @@ class _CardEditorSheet extends StatefulWidget {
 class _CardEditorSheetState extends State<_CardEditorSheet> {
   late DeckCard _draft = widget.card;
   final _recents = StyleRecents();
+  String? _imagePath;
+  bool _pickingImage = false;
   List<String> _recentColors = const [];
   List<String> _recentIcons = const [];
-  late final TextEditingController _name =
-      TextEditingController(text: widget.card.name);
+  late final TextEditingController _name = TextEditingController(
+    text: widget.card.name,
+  );
 
   @override
   void initState() {
     super.initState();
     _loadRecents();
+    _loadImage();
+  }
+
+  Future<void> _loadImage() async {
+    final images = await LauncherBridge.instance.cardImages();
+    if (!mounted) return;
+    setState(() => _imagePath = images[widget.card.id]);
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _pickingImage = true);
+    try {
+      final path = await LauncherBridge.instance.pickCardImage(widget.card.id);
+      if (!mounted) return;
+      // Null can mean "cancelled" or "this activity was rebuilt while the
+      // picker was up", so look on disk rather than trust it.
+      if (path != null) {
+        setState(() => _imagePath = path);
+      } else {
+        await _loadImage();
+      }
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+
+  Future<void> _removeImage() async {
+    await LauncherBridge.instance.removeCardImage(widget.card.id);
+    if (mounted) setState(() => _imagePath = null);
   }
 
   Future<void> _loadRecents() async {
@@ -122,8 +157,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
                 isDense: true,
                 filled: true,
                 fillColor: DeckColors.surface,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
@@ -132,6 +169,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
               onChanged: (value) =>
                   setState(() => _draft = _draft.copyWith(name: value)),
             ),
+            const SizedBox(height: 18),
+            _label('Picture'),
+            const SizedBox(height: 8),
+            _imageRow(),
             const SizedBox(height: 18),
             _label('Colour'),
             const SizedBox(height: 8),
@@ -156,18 +197,20 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
 
   Widget _doneButton() {
     return SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: colorOf(_draft.colorKey),
-                  foregroundColor: onCardForKey(_draft.colorKey),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('Done',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-            );
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: _save,
+        style: FilledButton.styleFrom(
+          backgroundColor: colorOf(_draft.colorKey),
+          foregroundColor: onCardForKey(_draft.colorKey),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        child: const Text(
+          'Done',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmDelete() async {
@@ -175,8 +218,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: DeckColors.strip,
-        title: Text('Delete ${widget.card.name}?',
-            style: const TextStyle(color: DeckColors.text, fontSize: 17)),
+        title: Text(
+          'Delete ${widget.card.name}?',
+          style: const TextStyle(color: DeckColors.text, fontSize: 17),
+        ),
         content: const Text(
           'Its apps are not removed — they stop being filed and show up under '
           'all apps again.',
@@ -185,13 +230,17 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep',
-                style: TextStyle(color: DeckColors.textDim)),
+            child: const Text(
+              'Keep',
+              style: TextStyle(color: DeckColors.textDim),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete',
-                style: TextStyle(color: Color(0xFFFF6B5A))),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Color(0xFFFF6B5A)),
+            ),
           ),
         ],
       ),
@@ -199,7 +248,11 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     if (confirmed != true || !mounted) return;
     Navigator.pop(
       context,
-      CardEditResult(card: widget.card, position: widget.position, deleted: true),
+      CardEditResult(
+        card: widget.card,
+        position: widget.position,
+        deleted: true,
+      ),
     );
   }
 
@@ -210,48 +263,83 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     Navigator.pop(
       context,
       CardEditResult(
-        card: _draft.copyWith(name: trimmed.isEmpty ? widget.card.name : trimmed),
+        card: _draft.copyWith(
+          name: trimmed.isEmpty ? widget.card.name : trimmed,
+        ),
         position: widget.position,
       ),
     );
   }
 
   Widget _label(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: DeckColors.textDim,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.8,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: DeckColors.textDim,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.8,
+    ),
+  );
 
   /// The card as it will actually look in the stack.
   Widget _preview() {
+    final color = colorOf(_draft.colorKey);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       height: 84,
       decoration: BoxDecoration(
-        color: colorOf(_draft.colorKey),
+        color: color,
         borderRadius: BorderRadius.circular(DeckMetrics.cardRadius),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          Icon(iconOf(_draft.iconKey),
-              size: 19, color: onCardForKey(_draft.colorKey)),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              _draft.name.trim().isEmpty ? widget.card.name : _draft.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: onCardForKey(_draft.colorKey),
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+      clipBehavior: Clip.antiAlias,
+      foregroundDecoration: _imagePath == null
+          ? null
+          : BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0),
+                  color.withValues(alpha: 0.55),
+                  color,
+                ],
+                stops: const [0.35, 0.7, 1],
               ),
+            ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_imagePath != null)
+            Image.file(
+              File(_imagePath!),
+              fit: BoxFit.cover,
+              cacheWidth: 720,
+              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  iconOf(_draft.iconKey),
+                  size: 19,
+                  color: onCardForKey(_draft.colorKey),
+                ),
+                const Spacer(),
+                Flexible(
+                  child: Text(
+                    _draft.name.trim().isEmpty ? widget.card.name : _draft.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: onCardForKey(_draft.colorKey),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -270,11 +358,62 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     setState(() => _draft = _draft.copyWith(colorKey: picked));
     // Only a custom colour is worth keeping: a preset is already on the shelf.
     if (!isCustomColorKey(picked)) return;
-    final updated = await _recents.addColor(
-      picked,
-      presets: starterColorKeys,
-    );
+    final updated = await _recents.addColor(picked, presets: starterColorKeys);
     if (mounted) setState(() => _recentColors = updated);
+  }
+
+  Widget _imageRow() {
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: _pickingImage ? null : _pickImage,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: DeckColors.surface,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: DeckColors.surfaceEdge),
+            ),
+            child: _pickingImage
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: DeckColors.textDim,
+                    ),
+                  )
+                : const Icon(
+                    Icons.image_outlined,
+                    size: 20,
+                    color: DeckColors.textDim,
+                  ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            _imagePath == null
+                ? 'None — the card is its colour alone'
+                : 'Fades into the card colour at the bottom, so the name stays '
+                      'readable',
+            style: deckText(size: 11, color: DeckColors.textDim),
+          ),
+        ),
+        if (_imagePath != null)
+          GestureDetector(
+            onTap: _removeImage,
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: DeckColors.textDim,
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _swatches() {
@@ -291,7 +430,8 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
         ),
         for (final key in _recentColors)
           GestureDetector(
-            onTap: () => setState(() => _draft = _draft.copyWith(colorKey: key)),
+            onTap: () =>
+                setState(() => _draft = _draft.copyWith(colorKey: key)),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 120),
               width: 42,
@@ -307,8 +447,11 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
                 ),
               ),
               child: _draft.colorKey == key
-                  ? Icon(Icons.check_rounded,
-                      size: 20, color: onCardForKey(key))
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: onCardForKey(key),
+                    )
                   : null,
             ),
           ),
@@ -331,8 +474,11 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
                 ),
               ),
               child: _draft.colorKey == color.key
-                  ? Icon(Icons.check_rounded,
-                      size: 20, color: onCardFor(Color(color.value)))
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: onCardFor(Color(color.value)),
+                    )
                   : null,
             ),
           ),
@@ -397,7 +543,6 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
   }
 }
 
-
 class _DeleteButton extends StatelessWidget {
   const _DeleteButton({required this.onTap});
 
@@ -414,8 +559,11 @@ class _DeleteButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: DeckColors.surfaceEdge),
         ),
-        child: const Icon(Icons.delete_outline_rounded,
-            size: 20, color: Color(0xFFFF6B5A)),
+        child: const Icon(
+          Icons.delete_outline_rounded,
+          size: 20,
+          color: Color(0xFFFF6B5A),
+        ),
       ),
     );
   }
