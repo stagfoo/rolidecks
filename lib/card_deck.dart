@@ -17,6 +17,7 @@ class DeckCard {
     required this.iconKey,
     this.appIds = const [],
     this.isAllApps = false,
+    this.imageOffset = 0,
   });
 
   final String id;
@@ -31,6 +32,12 @@ class DeckCard {
   /// Apps filed under this card, in the order they were added.
   final List<String> appIds;
 
+  /// How the card's picture is framed vertically, from -1 (its top edge) to 1
+  /// (its bottom). The picture itself is not in the model — it is a file named
+  /// after the card — but where you chose to sit it is a decision, and belongs
+  /// with the colour and the icon.
+  final double imageOffset;
+
   /// The terminal card. It holds no [appIds] of its own — it shows everything
   /// installed — and it cannot be deleted or moved off the bottom.
   final bool isAllApps;
@@ -42,6 +49,7 @@ class DeckCard {
     String? colorKey,
     String? iconKey,
     List<String>? appIds,
+    double? imageOffset,
   }) {
     return DeckCard(
       id: id,
@@ -50,6 +58,7 @@ class DeckCard {
       iconKey: iconKey ?? this.iconKey,
       appIds: appIds ?? this.appIds,
       isAllApps: isAllApps,
+      imageOffset: imageOffset ?? this.imageOffset,
     );
   }
 
@@ -74,6 +83,7 @@ class DeckCard {
         'iconKey': iconKey,
         'appIds': appIds,
         'isAllApps': isAllApps,
+        if (imageOffset != 0) 'imageOffset': imageOffset,
       };
 
   static DeckCard fromJson(Map<String, dynamic> json) {
@@ -88,6 +98,10 @@ class DeckCard {
           if (entry is String) entry,
       ],
       isAllApps: json['isAllApps'] as bool? ?? false,
+      // Clamped on the way in: a value outside the range would frame the
+      // picture off the card entirely.
+      imageOffset:
+          ((json['imageOffset'] as num?)?.toDouble() ?? 0).clamp(-1.0, 1.0),
     );
   }
 }

@@ -28,6 +28,20 @@ DeckCardView view({String? imagePath, bool focused = true}) => DeckCardView(
       onAppTap: (_) {},
     );
 
+extension on DeckCardView {
+  DeckCardView copyWithOffset(double offset) => DeckCardView(
+        card: card,
+        height: height,
+        focused: focused,
+        apps: apps,
+        totalInstalled: totalInstalled,
+        imagePath: imagePath,
+        imageOffset: offset,
+        onTap: onTap,
+        onAppTap: onAppTap,
+      );
+}
+
 void main() {
   late Directory temp;
   late String imagePath;
@@ -52,6 +66,47 @@ void main() {
   });
 
   tearDownAll(() => temp.deleteSync(recursive: true));
+
+  group('framing', () {
+    testWidgets('the picture is aligned by the card offset', (tester) async {
+      // A card is far wider than it is tall, so a cover crop throws away most
+      // of a photo's height; the offset is which part is kept.
+      await tester.pumpWidget(host(DeckCardView(
+        card: card.copyWith(imageOffset: -0.6),
+        height: 158,
+        focused: true,
+        apps: const [],
+        totalInstalled: 0,
+        imagePath: imagePath,
+        imageOffset: -0.6,
+        onTap: () {},
+        onAppTap: (_) {},
+      )));
+      final image = tester.widget<Image>(find.byType(Image));
+      expect(image.alignment, const Alignment(0, -0.6));
+      expect(image.fit, BoxFit.cover);
+    });
+
+    testWidgets('an offset beyond the range is clamped, not honoured',
+        (tester) async {
+      // Past the ends there is nothing left to show.
+      await tester.pumpWidget(host(view(imagePath: imagePath)
+          .copyWithOffset(4)));
+      final image = tester.widget<Image>(find.byType(Image));
+      expect(image.alignment, const Alignment(0, 1));
+    });
+
+    test('a stored offset round-trips, and a silly one is clamped', () {
+      final saved = card.copyWith(imageOffset: -0.4).toJson();
+      expect(DeckCard.fromJson(saved).imageOffset, -0.4);
+
+      expect(
+        DeckCard.fromJson({...saved, 'imageOffset': 9.0}).imageOffset,
+        1.0,
+      );
+      expect(DeckCard.fromJson({...saved}..remove('imageOffset')).imageOffset, 0);
+    });
+  });
 
   group('a card without a picture', () {
     testWidgets('draws no image at all', (tester) async {

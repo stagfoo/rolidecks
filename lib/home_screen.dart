@@ -397,6 +397,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // against the background.
                 flushTop: i == spec.focusedIndex && i > 0,
                 imagePath: _cardImages[_deck[i].id],
+                imageOffset: _deck[i].imageOffset,
                 apps: _appsByCard[_deck[i].id] ?? const [],
                 totalInstalled: _installed.length,
                 onTap: () => i == _focused

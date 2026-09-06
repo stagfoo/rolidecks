@@ -260,6 +260,7 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
       card,
       position: index,
       folderCount: _deck.folders.length,
+      apps: card.resolve(widget.installed),
     );
     if (result == null) return;
     _update(

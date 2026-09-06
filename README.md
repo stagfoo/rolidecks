@@ -142,6 +142,14 @@ to black, so the name strip sits on exactly what it always did and the
 foreground already chosen for that colour stays correct. A covered card's strip
 therefore looks like every other card's, since the strip is the part that shows.
 
+The editor previews it with the real card widget at the real card height, so
+what you are choosing and what the deck draws cannot drift apart — it was a
+short strip before, which squashed the picture into a band no card is ever that
+shape. **Drag that preview up and down** to choose which part of the picture the
+card keeps: a card is far wider than it is tall, so a cover crop throws away
+most of a photo's height. Where you leave it is stored with the card, next to
+its colour and icon.
+
 Pictures are copied into the app's own storage and scaled to 1080px on the way
 in: the picker grants access to one URI that its owner may later revoke, and
 decoding a full-size photo per card would cost more memory than the rest of the

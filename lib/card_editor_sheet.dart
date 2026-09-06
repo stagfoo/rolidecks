@@ -1,9 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import 'card_deck.dart';
 import 'card_style.dart';
+import 'deck_card_view.dart';
+import 'models.dart';
 import 'launcher_bridge.dart';
 import 'color_picker_screen.dart';
 import 'style_recents.dart';
@@ -44,6 +44,7 @@ Future<CardEditResult?> showCardEditor(
   DeckCard card, {
   required int position,
   required int folderCount,
+  List<LaunchableApp> apps = const [],
 }) {
   return showModalBottomSheet<CardEditResult>(
     context: context,
@@ -55,6 +56,7 @@ Future<CardEditResult?> showCardEditor(
       card: card,
       position: position,
       folderCount: folderCount,
+      apps: apps,
     ),
   );
 }
@@ -64,11 +66,16 @@ class _CardEditorSheet extends StatefulWidget {
     required this.card,
     required this.position,
     required this.folderCount,
+    required this.apps,
   });
 
   final DeckCard card;
   final int position;
   final int folderCount;
+
+  /// What is filed on the card, so the preview shows the real thing rather
+  /// than an empty one.
+  final List<LaunchableApp> apps;
 
   @override
   State<_CardEditorSheet> createState() => _CardEditorSheetState();
@@ -256,6 +263,11 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     );
   }
 
+  /// The name this card would end up with. An unnamed card is an unreadable
+  /// strip, so an emptied field falls back rather than being taken literally.
+  String get _effectiveName =>
+      _draft.name.trim().isEmpty ? widget.card.name : _draft.name;
+
   void _save() {
     final trimmed = _name.text.trim();
     // An unnamed card is an unreadable strip, so fall back rather than letting
@@ -281,85 +293,75 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     ),
   );
 
-  /// The card as it will actually look in the stack.
+  /// The card as it will actually look — the same widget the deck draws, at
+  /// the height the deck draws it.
+  ///
+  /// It used to be a short strip that approximated one, which is the kind of
+  /// preview that lies: a picture squashed into a band no card is ever that
+  /// shape, so what you chose and what you got were different things.
   Widget _preview() {
-    final color = colorOf(_draft.colorKey);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      height: 84,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(DeckMetrics.cardRadius),
-      ),
-      clipBehavior: Clip.antiAlias,
-      foregroundDecoration: _imagePath == null
-          ? null
-          : BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  color.withValues(alpha: 0),
-                  color.withValues(alpha: 0.55),
-                  color,
-                ],
-                stops: const [0.35, 0.7, 1],
-              ),
-            ),
+    const height = 158.0;
+    // The same fallback save applies, so the preview shows what you would get
+    // rather than the blank you are momentarily typing.
+    final card = DeckCardView(
+      card: _draft.copyWith(name: _effectiveName),
+      height: height,
+      focused: true,
+      apps: widget.apps,
+      totalInstalled: widget.apps.length,
+      imagePath: _imagePath,
+      imageOffset: _draft.imageOffset,
+      onTap: () {},
+      onAppTap: (_) {},
+    );
+
+    if (_imagePath == null) return card;
+
+    return GestureDetector(
+      // Vertical only: the card is far wider than it is tall, so a cover crop
+      // throws away a photo's height and up-and-down is the whole choice.
+      onVerticalDragUpdate: (details) {
+        setState(() {
+          _draft = _draft.copyWith(
+            imageOffset: (_draft.imageOffset - details.delta.dy * 2 / height)
+                .clamp(-1.0, 1.0),
+          );
+        });
+      },
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          if (_imagePath != null)
-            Image.file(
-              File(_imagePath!),
-              fit: BoxFit.cover,
-              cacheWidth: 720,
-              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(
-                  iconOf(_draft.iconKey),
-                  size: 19,
-                  color: onCardForKey(_draft.colorKey),
+          card,
+          Positioned(
+            top: 8,
+            left: 12,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: DeckColors.ground.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const Spacer(),
-                Flexible(
-                  child: Text(
-                    _draft.name.trim().isEmpty ? widget.card.name : _draft.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: onCardForKey(_draft.colorKey),
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 13,
+                      color: DeckColors.text,
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'drag to reposition',
+                      style: deckText(size: 10, color: DeckColors.text),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _pickColor() async {
-    final picked = await showColorPicker(
-      context,
-      current: _draft.colorKey,
-      cardName: _draft.name.trim().isEmpty ? widget.card.name : _draft.name,
-      iconKey: _draft.iconKey,
-    );
-    if (picked == null) return;
-    setState(() => _draft = _draft.copyWith(colorKey: picked));
-    // Only a custom colour is worth keeping: a preset is already on the shelf.
-    if (!isCustomColorKey(picked)) return;
-    final updated = await _recents.addColor(picked, presets: starterColorKeys);
-    if (mounted) setState(() => _recentColors = updated);
   }
 
   Widget _imageRow() {
@@ -395,8 +397,7 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
           child: Text(
             _imagePath == null
                 ? 'None — the card is its colour alone'
-                : 'Fades into the card colour at the bottom, so the name stays '
-                      'readable',
+                : 'Drag the card above to reposition it',
             style: deckText(size: 11, color: DeckColors.textDim),
           ),
         ),
@@ -414,6 +415,21 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
           ),
       ],
     );
+  }
+
+  Future<void> _pickColor() async {
+    final picked = await showColorPicker(
+      context,
+      current: _draft.colorKey,
+      cardName: _effectiveName,
+      iconKey: _draft.iconKey,
+    );
+    if (picked == null) return;
+    setState(() => _draft = _draft.copyWith(colorKey: picked));
+    // Only a custom colour is worth keeping: a preset is already on the shelf.
+    if (!isCustomColorKey(picked)) return;
+    final updated = await _recents.addColor(picked, presets: starterColorKeys);
+    if (mounted) setState(() => _recentColors = updated);
   }
 
   Widget _swatches() {

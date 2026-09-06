@@ -36,6 +36,7 @@ class DeckCardView extends StatelessWidget {
     this.flushTop = false,
     this.topBleed = 0,
     this.imagePath,
+    this.imageOffset = 0,
   });
 
   final DeckCard card;
@@ -69,6 +70,9 @@ class DeckCardView extends StatelessWidget {
 
   /// A picture for this card, filling it behind everything else.
   final String? imagePath;
+
+  /// Where that picture sits vertically, -1 (top) to 1 (bottom).
+  final double imageOffset;
 
   /// Extra height added above the card, hidden behind the card in front.
   ///
@@ -149,6 +153,10 @@ class DeckCardView extends StatelessWidget {
           Image.file(
             File(imagePath!),
             fit: BoxFit.cover,
+            // The card is far wider than it is tall, so a cover crop throws
+            // away most of a portrait photo's height. This is which part of it
+            // to keep.
+            alignment: Alignment(0, imageOffset.clamp(-1.0, 1.0)),
             // Already downscaled on the way in; this keeps the decode to the
             // size actually drawn.
             cacheWidth: 1080,
