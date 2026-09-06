@@ -12,9 +12,7 @@ import 'theme.dart';
 /// flags — which is no use flashing past for six seconds at the bottom of the
 /// screen, and was no use at all when the long-press quietly did nothing.
 class DiagnosticsScreen extends StatefulWidget {
-  const DiagnosticsScreen({super.key, required this.metrics});
-
-  final ScreenMetrics? metrics;
+  const DiagnosticsScreen({super.key});
 
   @override
   State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
@@ -22,6 +20,7 @@ class DiagnosticsScreen extends StatefulWidget {
 
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Map<String, Object?>? _shortcuts;
+  ScreenMetrics? _metrics;
   Object? _error;
 
   @override
@@ -32,10 +31,16 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   Future<void> _load() async {
     try {
-      final shortcuts = await LauncherBridge.instance.shortcutDiagnostics();
+      // Read fresh rather than handed in: the panel changes shape when the
+      // phone is rotated, and a figure captured at startup would be wrong.
+      final results = await Future.wait([
+        LauncherBridge.instance.shortcutDiagnostics(),
+        LauncherBridge.instance.screenMetrics(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _shortcuts = shortcuts;
+        _shortcuts = results[0] as Map<String, Object?>;
+        _metrics = results[1] as ScreenMetrics;
         _error = null;
       });
     } catch (e) {
@@ -47,7 +52,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   String get _report {
     final buffer = StringBuffer()..writeln('Rolidecks diagnostics');
-    if (widget.metrics != null) buffer.writeln('screen: ${widget.metrics}');
+    if (_metrics != null) buffer.writeln('screen: $_metrics');
     if (_error != null) buffer.writeln('error: $_error');
     for (final entry in (_shortcuts ?? const {}).entries) {
       buffer.writeln('${entry.key}: ${entry.value}');
@@ -138,8 +143,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 if (entry.key != 'isDefaultLauncher' &&
                     entry.key != 'isRequestPinShortcutSupported')
                   _Line(name: entry.key, value: '${entry.value}'),
-              if (widget.metrics != null)
-                _Line(name: 'screen', value: '${widget.metrics}'),
+              if (_metrics != null)
+                _Line(name: 'screen', value: '$_metrics'),
             ],
             const SizedBox(height: 16),
             if (shortcuts != null && !isHome)

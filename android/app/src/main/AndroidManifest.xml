@@ -17,6 +17,13 @@
         android:label="Rolidecks"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- screenOrientation is fullUser, not portrait: the deck follows the
+             phone's auto-rotate setting and stays put when that is locked.
+             There is no separate landscape layout — the deck solves for
+             whatever box it is handed, so the cards just get wider and the
+             strips thinner. configChanges already covers orientation and
+             screenSize, so a rotation resizes the running activity rather than
+             restarting it, and costs no cold start. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -25,7 +32,7 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
 
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullUser"
 
             android:launchMode="singleTask"
             android:stateNotNeeded="true"

@@ -41,7 +41,6 @@ class _HomeScreenState extends State<HomeScreen>
   /// phone, and doing that per card per frame is a hundred-element sort in the
   /// middle of an animation.
   Map<String, List<LaunchableApp>> _appsByCard = const {};
-  ScreenMetrics? _metrics;
   int _focused = 0;
   final _scroll = ScrollController();
   StackSpec? _lastSpec;
@@ -130,16 +129,12 @@ class _HomeScreenState extends State<HomeScreen>
     // round-trips and listApps is by far the slowest of them.
     final results = await Future.wait([
       _everything(),
-      LauncherBridge.instance.screenMetrics(),
       LauncherBridge.instance.isDefaultLauncher(),
     ]);
     if (!mounted) return;
 
     final apps = results[0] as List<LaunchableApp>;
-    setState(() {
-      _metrics = results[1] as ScreenMetrics;
-      _isDefault = results[2] as bool;
-    });
+    setState(() => _isDefault = results[1] as bool);
     await _adopt(apps);
   }
 
@@ -481,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _showMetrics() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => DiagnosticsScreen(metrics: _metrics),
+        builder: (context) => const DiagnosticsScreen(),
       ),
     );
   }

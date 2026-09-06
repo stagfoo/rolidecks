@@ -198,9 +198,18 @@ is the whole of "make me the launcher".
 **If the Home-app slot isn't offered at all**, iKKO's AI OS has pinned it and no
 third-party launcher will work on this device.
 
-Orientation is `portrait` in `AndroidManifest.xml`. The layout solves for
-whatever box it gets, so changing that one attribute is all a different
-orientation needs.
+Orientation is `fullUser`: the deck follows the phone's auto-rotate setting and
+stays put when that is locked. There is no separate landscape layout — the deck
+solves for whatever box it is handed, so turning the phone just makes the cards
+wider and the strips thinner. `configChanges` already covers orientation and
+screen size, so a rotation resizes the running activity rather than restarting
+it, and costs no cold start.
+
+| Density | Portrait box | Landscape box | 7 cards, landscape |
+| --- | --- | --- | --- |
+| 2.5× | 446dp | 382dp | 158dp card, 37dp strips |
+| 2.75× | 401dp | 343dp | 151dp card, 32dp strips |
+| 3.0× | 363dp | 310dp | 118dp card, 32dp strips |
 
 ## Layout
 

@@ -169,6 +169,43 @@ void main() {
     });
   });
 
+  group('landscape', () {
+    // The panel is 1080 x 1240, so turning the phone gives 1240 x 1080: wider
+    // and shorter. The deck has no separate landscape layout — it solves for
+    // whatever box it is handed — so what has to hold is that the box a
+    // rotation produces still works.
+    const landscapeHeight = 343.0;
+
+    test('a normal deck still fits when the phone is turned', () {
+      for (final count in [3, 5, 7]) {
+        final spec = solveStack(
+            height: landscapeHeight, cardCount: count, focusedIndex: 0);
+        expect(spec.overflows, isFalse, reason: '$count cards');
+        expect(spec.peek, greaterThanOrEqualTo(StackStyle.headerHeight - 0.01),
+            reason: '$count cards');
+      }
+    });
+
+    test('the card stays big enough to be worth opening', () {
+      final spec =
+          solveStack(height: landscapeHeight, cardCount: 7, focusedIndex: 0);
+      expect(spec.cardHeight, greaterThan(spec.peek * 3));
+    });
+
+    test('the same deck holds together in both orientations', () {
+      for (final height in [401.0, landscapeHeight]) {
+        for (var focus = 0; focus < 7; focus++) {
+          final spec =
+              solveStack(height: height, cardCount: 7, focusedIndex: focus);
+          expect(spec.revealOf(focus), spec.cardHeight,
+              reason: 'height $height focus $focus');
+          expect(spec.totalHeight, lessThanOrEqualTo(height + 0.01),
+              reason: 'height $height focus $focus');
+        }
+      }
+    });
+  });
+
   group('solveStack edges', () {
     test('an empty deck produces no height and does not divide by zero', () {
       final spec = solveStack(height: stackHeight, cardCount: 0, focusedIndex: 0);
