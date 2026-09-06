@@ -13,6 +13,7 @@ import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
@@ -776,15 +777,33 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun rasterise(drawable: Drawable, size: Int): ByteArray {
-        val bitmap = if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            Bitmap.createScaledBitmap(drawable.bitmap, size, size, true)
-        } else {
-            // Adaptive icons have no single backing bitmap — they have to be
-            // rasterised through a Canvas at the size we want.
-            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            drawable.setBounds(0, 0, size, size)
-            drawable.draw(Canvas(bmp))
-            bmp
+        val bitmap = when {
+            drawable is BitmapDrawable && drawable.bitmap != null ->
+                Bitmap.createScaledBitmap(drawable.bitmap, size, size, true)
+
+            // An adaptive icon is drawn on a 108-unit canvas of which only the
+            // middle 72 is ever meant to be seen — the launcher's mask crops
+            // the rest. Drawing it flat leaves the artwork inset with its
+            // background bleeding around the edge, which is what made these
+            // need a tile behind them to look deliberate. Rendering at 1.5x and
+            // cropping the centre reproduces that crop, so the icon fills its
+            // square the way the system draws it.
+            drawable is AdaptiveIconDrawable -> {
+                val full = (size * 1.5f).toInt().coerceAtLeast(size)
+                val oversized =
+                    Bitmap.createBitmap(full, full, Bitmap.Config.ARGB_8888)
+                drawable.setBounds(0, 0, full, full)
+                drawable.draw(Canvas(oversized))
+                val inset = (full - size) / 2
+                Bitmap.createBitmap(oversized, inset, inset, size, size)
+            }
+
+            else -> {
+                val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                drawable.setBounds(0, 0, size, size)
+                drawable.draw(Canvas(bmp))
+                bmp
+            }
         }
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)

@@ -36,18 +36,7 @@ class AppTile extends StatelessWidget {
         children: [
           Stack(
             children: [
-              Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  color: DeckColors.surface,
-                  borderRadius: BorderRadius.circular(13),
-                  border: Border.all(color: DeckColors.surfaceEdge),
-                ),
-                clipBehavior: Clip.antiAlias,
-                padding: EdgeInsets.all(size * 0.13),
-                child: AppIconImage(app: app, size: size * 0.74),
-              ),
+              AppIconImage(app: app, size: size),
               if (filed)
                 Positioned(
                   right: 0,

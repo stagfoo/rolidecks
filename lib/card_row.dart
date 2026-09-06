@@ -70,22 +70,10 @@ class _CardApp extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                // A soft dark well behind the icon, so app artwork of any
-                // colour still separates from a bright card.
-                color: onCard.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              padding: const EdgeInsets.all(6),
-              child: AppIconImage(
-                app: app,
-                size: 36,
-                color: onCard.withValues(alpha: 0.5),
-              ),
+            AppIconImage(
+              app: app,
+              size: 48,
+              color: onCard.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 4),
             Text(

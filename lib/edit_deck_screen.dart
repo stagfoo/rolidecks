@@ -297,20 +297,10 @@ class _AppChip extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: onCard.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              clipBehavior: Clip.antiAlias,
-              padding: const EdgeInsets.all(5),
-              child: AppIconImage(
-                app: app,
-                size: 32,
-                color: onCard.withValues(alpha: 0.5),
-              ),
+            AppIconImage(
+              app: app,
+              size: 42,
+              color: onCard.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 3),
             Text(

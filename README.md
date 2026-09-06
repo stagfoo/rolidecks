@@ -376,6 +376,19 @@ background rather than the template's white, and the home screen renders from
 local storage immediately, asking the platform afterwards instead of holding a
 spinner until it answers.
 
+## Icons
+
+App icons are drawn as rounded squares, filling their space with nothing behind
+them. That is only possible because of how they are rasterised: an adaptive icon
+lives on a 108-unit canvas of which the launcher's mask shows the middle 72, so
+drawing it flat leaves the artwork inset with its background bleeding round the
+edge — which is exactly what a faded tile behind it was hiding. The Android side
+renders those at 1.5x and crops the centre, reproducing that mask, so the icon
+fills its square the way the system draws it.
+
+The rounding lives in `AppIconImage`, which also sizes itself, so every place
+that draws an icon agrees on both without being told.
+
 ## The app snapshot
 
 Asking the platform for every launchable activity is the slowest thing the

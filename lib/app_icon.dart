@@ -33,13 +33,18 @@ class AppIconImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cached = LauncherBridge.instance.cachedIconFor(app);
-    if (LauncherBridge.instance.hasIconFor(app)) {
-      return _paint(context, cached);
-    }
-    return FutureBuilder<Uint8List?>(
-      future: LauncherBridge.instance.iconFor(app),
-      builder: (context, snapshot) => _paint(context, snapshot.data),
+    // Sizes itself. It used to be sized by the tile it sat inside; with those
+    // gone it would otherwise lay out at the bitmap's own 144px, and every
+    // caller would have to remember to box it.
+    return SizedBox(
+      width: size,
+      height: size,
+      child: LauncherBridge.instance.hasIconFor(app)
+          ? _paint(context, LauncherBridge.instance.cachedIconFor(app))
+          : FutureBuilder<Uint8List?>(
+              future: LauncherBridge.instance.iconFor(app),
+              builder: (context, snapshot) => _paint(context, snapshot.data),
+            ),
     );
   }
 
@@ -52,12 +57,19 @@ class AppIconImage extends StatelessWidget {
       );
     }
     final pixels = (size * MediaQuery.devicePixelRatioOf(context)).round();
-    return Image.memory(
-      bytes,
-      fit: BoxFit.contain,
-      gaplessPlayback: true,
-      cacheWidth: pixels,
-      cacheHeight: pixels,
+    return ClipRRect(
+      // Rounded square, and the icon fills it. Android hands back a square
+      // bitmap — adaptive icons already cropped to what their mask would show
+      // — so the shape is this launcher's to choose, and choosing it here means
+      // every place that draws an icon agrees without being told.
+      borderRadius: BorderRadius.circular(size * 0.24),
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        cacheWidth: pixels,
+        cacheHeight: pixels,
+      ),
     );
   }
 }
