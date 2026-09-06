@@ -125,17 +125,21 @@ class _HomeScreenState extends State<HomeScreen>
       _loading = false;
     });
 
-    // Concurrently, not one after another: these are three independent
-    // round-trips and listApps is by far the slowest of them.
-    final results = await Future.wait([
-      _everything(),
-      LauncherBridge.instance.isDefaultLauncher(),
-    ]);
-    if (!mounted) return;
+    // Wrapped, because this had no error handling at all: one failing platform
+    // call left the launcher running on nothing but its cache, silently, with
+    // the cause three method calls away from the symptom.
+    try {
+      final results = await Future.wait([
+        _everything(),
+        LauncherBridge.instance.isDefaultLauncher(),
+      ]);
+      if (!mounted) return;
 
-    final apps = results[0] as List<LaunchableApp>;
-    setState(() => _isDefault = results[1] as bool);
-    await _adopt(apps);
+      setState(() => _isDefault = results[1] as bool);
+      await _adopt(results[0] as List<LaunchableApp>);
+    } catch (e) {
+      if (mounted) _toast('Could not read the app list: $e');
+    }
   }
 
   /// Takes a freshly fetched list, redrawing and rewriting the snapshot only if

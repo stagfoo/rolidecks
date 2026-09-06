@@ -76,20 +76,33 @@ class LauncherBridge {
   /// Shortcuts other apps have pinned here. Empty until Rolidecks is the
   /// default launcher — only the host launcher may read them, which is a
   /// legitimate state rather than a failure.
+  ///
+  /// Empty rather than throwing when the platform cannot answer either. A
+  /// phone can carry a locked work or clone profile that makes this fail
+  /// outright, and no shortcut is worth losing the app list over.
   Future<List<LaunchableApp>> listShortcuts() async {
-    final raw =
-        await _channel.invokeListMethod<Object?>('listShortcuts') ?? const [];
-    return raw
-        .whereType<Map<Object?, Object?>>()
-        .map(LaunchableApp.shortcutFromPlatform)
-        .toList();
+    try {
+      final raw =
+          await _channel.invokeListMethod<Object?>('listShortcuts') ?? const [];
+      return raw
+          .whereType<Map<Object?, Object?>>()
+          .map(LaunchableApp.shortcutFromPlatform)
+          .toList();
+    } catch (e) {
+      return const [];
+    }
   }
 
   /// Everything launchable, apps and pinned shortcuts together, so cards and
   /// search never have to ask which is which.
+  ///
+  /// The apps are fetched first and on their own. Waiting on both together
+  /// meant a shortcut failure discarded the app list as well, so the launcher
+  /// quietly ran on nothing but its cache — a new app would never appear, and
+  /// the cause was three method calls away from the symptom.
   Future<List<LaunchableApp>> listEverything() async {
-    final results = await Future.wait([listApps(), listShortcuts()]);
-    return [...results[0], ...results[1]];
+    final apps = await listApps();
+    return [...apps, ...await listShortcuts()];
   }
 
   /// The icon if it has already been fetched, without touching the channel.

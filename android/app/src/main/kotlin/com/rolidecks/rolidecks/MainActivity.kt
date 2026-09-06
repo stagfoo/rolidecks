@@ -20,7 +20,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
-import android.os.UserManager
 import android.provider.Settings
 import android.util.DisplayMetrics
 import io.flutter.embedding.android.FlutterActivity
@@ -264,6 +263,33 @@ class MainActivity : FlutterActivity() {
         get() = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
 
     /**
+     * The profiles worth asking about, skipping any that cannot answer.
+     *
+     * A phone can carry a work or clone profile that is locked or stopped, and
+     * asking LauncherApps about one throws "User 10 is locked or not running".
+     * That is not a SecurityException, so catching only that let it escape and
+     * fail the whole call — which took the app list down with it, since
+     * shortcuts and apps were fetched together.
+     */
+    private fun shortcutProfiles(): List<UserHandle> = try {
+        launcherApps.profiles
+    } catch (e: Throwable) {
+        listOf(android.os.Process.myUserHandle())
+    }
+
+    /**
+     * Runs [work] for one profile, treating any failure as "this profile has
+     * nothing to say" rather than as the end of the query. Anything can come
+     * back from a profile that is shutting down, so this catches broadly on
+     * purpose.
+     */
+    private fun <T> perProfile(profile: UserHandle, work: (UserHandle) -> T?): T? = try {
+        work(profile)
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
      * Shortcuts other apps have pinned here — a folder from a file manager, a
      * conversation from a chat app.
      *
@@ -277,16 +303,10 @@ class MainActivity : FlutterActivity() {
         val query = LauncherApps.ShortcutQuery()
             .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
 
-        val userManager = getSystemService(Context.USER_SERVICE) as UserManager
         val out = mutableListOf<Map<String, Any?>>()
-        for (profile in userManager.userProfiles) {
-            val found: List<ShortcutInfo> = try {
-                launcherApps.getShortcuts(query, profile) ?: emptyList()
-            } catch (e: SecurityException) {
-                // Lost host permission between the check and the call, e.g. the
-                // user just switched launchers.
-                emptyList()
-            }
+        for (profile in shortcutProfiles()) {
+            val found: List<ShortcutInfo> =
+                perProfile(profile) { launcherApps.getShortcuts(query, it) } ?: emptyList()
             for (shortcut in found) {
                 out.add(
                     mapOf(
@@ -309,7 +329,11 @@ class MainActivity : FlutterActivity() {
     /// request never arrived, was refused, or arrived and is simply not being
     /// read. This answers that without a cable.
     private fun shortcutDiagnostics(): Map<String, Any> {
-        val host = launcherApps.hasShortcutHostPermission()
+        val host = try {
+            launcherApps.hasShortcutHostPermission()
+        } catch (e: Throwable) {
+            false
+        }
         // The exact flag every app checks before offering "add to home
         // screen". Chrome and DuckDuckGo both consult it and quietly do
         // something else when it is false, so if this is false the problem is
@@ -324,9 +348,17 @@ class MainActivity : FlutterActivity() {
         return mapOf(
             "isRequestPinShortcutSupported" to pinSupported,
             "isShortcutHost" to host,
-            "pinnedCount" to if (host) listShortcuts().size else -1,
+            "pinnedCount" to if (host) {
+                try {
+                    listShortcuts().size
+                } catch (e: Throwable) {
+                    -2
+                }
+            } else {
+                -1
+            },
             "isDefaultLauncher" to isDefaultLauncher(),
-            "makerCount" to listShortcutMakers().size,
+            "profiles" to shortcutProfiles().size,
             // What happened the last time a shortcut was attempted, kept so a
             // failure can be read off the device rather than guessed at.
             "lastOutcome" to (shortcutPrefs.getString(outcomeKey, "none") ?: "none")
@@ -514,17 +546,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun userForShortcut(packageName: String, shortcutId: String): UserHandle {
-        val userManager = getSystemService(Context.USER_SERVICE) as UserManager
         val query = LauncherApps.ShortcutQuery()
             .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
             .setPackage(packageName)
             .setShortcutIds(listOf(shortcutId))
-        for (profile in userManager.userProfiles) {
-            val found = try {
-                launcherApps.getShortcuts(query, profile)
-            } catch (e: SecurityException) {
-                null
-            }
+        for (profile in shortcutProfiles()) {
+            val found = perProfile(profile) { launcherApps.getShortcuts(query, it) }
             if (!found.isNullOrEmpty()) return profile
         }
         return android.os.Process.myUserHandle()
@@ -537,13 +564,8 @@ class MainActivity : FlutterActivity() {
             .setPackage(packageName)
             .setShortcutIds(listOf(shortcutId))
 
-        val userManager = getSystemService(Context.USER_SERVICE) as UserManager
-        for (profile in userManager.userProfiles) {
-            val found = try {
-                launcherApps.getShortcuts(query, profile)
-            } catch (e: SecurityException) {
-                null
-            }
+        for (profile in shortcutProfiles()) {
+            val found = perProfile(profile) { launcherApps.getShortcuts(query, it) }
             val shortcut = found?.firstOrNull() ?: continue
             val drawable = launcherApps.getShortcutIconDrawable(
                 shortcut,

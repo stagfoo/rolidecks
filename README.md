@@ -82,6 +82,14 @@ There is an older route too, a broadcast, which apps fall back to when the
 modern one reports itself unsupported — `InstallShortcutReceiver` answers that
 and files the result the same way.
 
+A phone can carry a work or clone profile that is locked or stopped, and asking
+`LauncherApps` about one throws `User 10 is locked or not running` — not a
+`SecurityException`, so catching only that let it escape. Profiles that cannot
+answer are skipped, and a shortcut failure can no longer take the app list down
+with it: the two were awaited together, so one locked profile left the launcher
+running on nothing but its cache, with no new app ever appearing and the cause
+three calls away from the symptom.
+
 **Only the home app receives any of them.** An empty Shortcuts tab says which of
 those two things it is and offers to fix the one that is fixable, and
 long-pressing settings opens a **Diagnostics** screen with the two flags that
