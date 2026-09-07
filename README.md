@@ -379,12 +379,16 @@ spinner until it answers.
 ## Icons
 
 App icons are drawn as rounded squares, filling their space with nothing behind
-them. That is only possible because of how they are rasterised: an adaptive icon
-lives on a 108-unit canvas of which the launcher's mask shows the middle 72, so
-drawing it flat leaves the artwork inset with its background bleeding round the
-edge — which is exactly what a faded tile behind it was hiding. The Android side
-renders those at 1.5x and crops the centre, reproducing that mask, so the icon
-fills its square the way the system draws it.
+them. That depends on how they are rasterised. An adaptive icon's two layers sit
+on a 108-unit canvas of which only the middle 72 is meant to be seen — the rest
+is bleed, for parallax and for whatever shape a launcher masks to. The Android
+side draws those *layers* at 1.5x and crops the centre, mapping the safe zone
+onto the whole tile so the icon can fill a rounded square of this launcher's
+choosing.
+
+The layers, not the drawable. `AdaptiveIconDrawable.draw()` already applies the
+system's mask and fits it to the bounds, so cropping its output crops a second
+time and throws a third off every icon.
 
 The rounding lives in `AppIconImage`, which also sizes itself, so every place
 that draws an icon agrees on both without being told.

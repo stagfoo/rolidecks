@@ -781,19 +781,30 @@ class MainActivity : FlutterActivity() {
             drawable is BitmapDrawable && drawable.bitmap != null ->
                 Bitmap.createScaledBitmap(drawable.bitmap, size, size, true)
 
-            // An adaptive icon is drawn on a 108-unit canvas of which only the
-            // middle 72 is ever meant to be seen — the launcher's mask crops
-            // the rest. Drawing it flat leaves the artwork inset with its
-            // background bleeding around the edge, which is what made these
-            // need a tile behind them to look deliberate. Rendering at 1.5x and
-            // cropping the centre reproduces that crop, so the icon fills its
-            // square the way the system draws it.
-            drawable is AdaptiveIconDrawable -> {
+            // An adaptive icon's two layers are drawn on a 108-unit canvas of
+            // which only the middle 72 is meant to be seen; the outer ring is
+            // bleed for parallax and for whatever shape a launcher masks to.
+            // Rendering the layers at 1.5x and cropping the centre maps that
+            // safe zone onto the whole tile, which is what lets the icon fill a
+            // rounded square of this launcher's choosing.
+            //
+            // The layers, not the drawable itself: draw() already applies the
+            // system's mask and fits it to the bounds, so cropping its output
+            // crops a second time and throws away a third of every icon.
+            drawable is AdaptiveIconDrawable &&
+                (drawable.background != null || drawable.foreground != null) -> {
                 val full = (size * 1.5f).toInt().coerceAtLeast(size)
                 val oversized =
                     Bitmap.createBitmap(full, full, Bitmap.Config.ARGB_8888)
-                drawable.setBounds(0, 0, full, full)
-                drawable.draw(Canvas(oversized))
+                val canvas = Canvas(oversized)
+                drawable.background?.apply {
+                    setBounds(0, 0, full, full)
+                    draw(canvas)
+                }
+                drawable.foreground?.apply {
+                    setBounds(0, 0, full, full)
+                    draw(canvas)
+                }
                 val inset = (full - size) / 2
                 Bitmap.createBitmap(oversized, inset, inset, size, size)
             }
