@@ -247,6 +247,7 @@ class DeckCardView extends StatelessWidget {
     return CardAppRow(
       apps: apps,
       cardColor: color,
+      showLabels: card.showAppLabels,
       onTap: onAppTap,
       onLongPress: onAppLongPress,
     );

@@ -54,6 +54,10 @@ already filed there**, and a **+** to add more.
 - **Tap the card** — anywhere on it — to edit its colour, icon and name, or
   delete it. A small pencil marks it. The app chips, the + and the handle are
   children, so they are hit first and keep doing their own jobs.
+- **App titles** can be turned off per card, in the editor. Per card rather than
+  globally: a card of five things you know by their icon does not need names,
+  while one holding a dozen similar-looking utilities does. With them off the
+  icons take the room the names were using rather than leaving a gap.
 - **Tap +** for a searchable, multi-select picker — a full screen, not a bottom
   sheet, so it never has to fight the keyboard for room. File a card's worth of
   apps in one go rather than one at a time. An app already on the card is greyed

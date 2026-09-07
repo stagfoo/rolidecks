@@ -177,6 +177,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
                   setState(() => _draft = _draft.copyWith(name: value)),
             ),
             const SizedBox(height: 18),
+            _label('App titles'),
+            const SizedBox(height: 4),
+            _labelsRow(),
+            const SizedBox(height: 14),
             _label('Picture'),
             const SizedBox(height: 8),
             _imageRow(),
@@ -361,6 +365,28 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _labelsRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            _draft.showAppLabels
+                ? 'Shown under each app'
+                : 'Hidden, and the icons take the room',
+            style: deckText(size: 11, color: DeckColors.textDim),
+          ),
+        ),
+        Switch(
+          value: _draft.showAppLabels,
+          activeThumbColor: colorOf(_draft.colorKey),
+          onChanged: (value) => setState(
+            () => _draft = _draft.copyWith(showAppLabels: value),
+          ),
+        ),
+      ],
     );
   }
 

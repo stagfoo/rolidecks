@@ -18,6 +18,7 @@ class DeckCard {
     this.appIds = const [],
     this.isAllApps = false,
     this.imageOffset = 0,
+    this.showAppLabels = true,
   });
 
   final String id;
@@ -38,6 +39,13 @@ class DeckCard {
   /// with the colour and the icon.
   final double imageOffset;
 
+  /// Whether the apps on this card are named underneath.
+  ///
+  /// Per card rather than a global setting: a card of five things you know by
+  /// their icon does not need names, while one holding a dozen similar-looking
+  /// utilities does.
+  final bool showAppLabels;
+
   /// The terminal card. It holds no [appIds] of its own — it shows everything
   /// installed — and it cannot be deleted or moved off the bottom.
   final bool isAllApps;
@@ -50,6 +58,7 @@ class DeckCard {
     String? iconKey,
     List<String>? appIds,
     double? imageOffset,
+    bool? showAppLabels,
   }) {
     return DeckCard(
       id: id,
@@ -59,6 +68,7 @@ class DeckCard {
       appIds: appIds ?? this.appIds,
       isAllApps: isAllApps,
       imageOffset: imageOffset ?? this.imageOffset,
+      showAppLabels: showAppLabels ?? this.showAppLabels,
     );
   }
 
@@ -84,6 +94,7 @@ class DeckCard {
         'appIds': appIds,
         'isAllApps': isAllApps,
         if (imageOffset != 0) 'imageOffset': imageOffset,
+        if (!showAppLabels) 'showAppLabels': false,
       };
 
   static DeckCard fromJson(Map<String, dynamic> json) {
@@ -102,6 +113,7 @@ class DeckCard {
       // picture off the card entirely.
       imageOffset:
           ((json['imageOffset'] as num?)?.toDouble() ?? 0).clamp(-1.0, 1.0),
+      showAppLabels: json['showAppLabels'] as bool? ?? true,
     );
   }
 }
