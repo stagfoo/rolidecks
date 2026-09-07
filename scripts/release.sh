@@ -18,8 +18,9 @@ set -euo pipefail
 trap 'status=$?; if [ $status -ne 0 ]; then
   echo "" >&2
   echo "!! release.sh FAILED at line $LINENO (exit $status)." >&2
-  echo "!! Nothing was published. Do not run gh release create by hand:" >&2
-  echo "!! the APK in build/ is from an earlier version." >&2
+  echo "!! Nothing was published. Do not finish this by hand: the APK in" >&2
+  echo "!! build/ may be from an earlier version, and publishing it skips" >&2
+  echo "!! the check that would have caught that." >&2
 fi' EXIT
 
 cd "$(dirname "$0")/.."
@@ -85,7 +86,12 @@ else
   aapt2_bin=$(ls -d "${ANDROID_HOME:-$HOME/development/android-sdk}"/build-tools/*/aapt2 2>/dev/null | tail -1 || true)
 fi
 if [ -n "${aapt2_bin:-}" ] && [ -x "${aapt2_bin}" ]; then
-  built=$("$aapt2_bin" dump badging "$apk_path" | head -1 | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+  # Captured whole, then matched. Piping aapt2 into head kills aapt2 with
+  # SIGPIPE the moment head has its line, and pipefail turns that into a failed
+  # release — the guard against shipping a stale APK was itself stopping the
+  # publish, after a build that had gone perfectly well.
+  badging=$("$aapt2_bin" dump badging "$apk_path")
+  built=$(printf '%s\n' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | sed -n 1p)
   if [ "$built" != "$next_version" ]; then
     echo "!! APK says version $built but the release is $next_version." >&2
     echo "!! That is a stale build; it would ship the previous version." >&2
