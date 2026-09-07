@@ -11,6 +11,17 @@
 # tag against a "1.0.0" versionName is not.
 set -euo pipefail
 
+# Say which step failed and how. Piping this script through `tail` hides the
+# error, and a silent abort before the build is how a release ends up carrying
+# the previous version's APK — publish only ever from here, never by hand
+# afterwards, or the version check below is skipped along with everything else.
+trap 'status=$?; if [ $status -ne 0 ]; then
+  echo "" >&2
+  echo "!! release.sh FAILED at line $LINENO (exit $status)." >&2
+  echo "!! Nothing was published. Do not run gh release create by hand:" >&2
+  echo "!! the APK in build/ is from an earlier version." >&2
+fi' EXIT
+
 cd "$(dirname "$0")/.."
 
 app_name=$(basename "$(pwd)")
