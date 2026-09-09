@@ -34,7 +34,8 @@ class StackSpec {
   final int cardCount;
   final int focusedIndex;
 
-  /// Top of the stack, so a short deck sits centred.
+  /// Top of the stack. A deck shorter than its box hangs from the bottom of
+  /// it, so it stays under the thumb on a tall screen.
   final double originY;
 
   /// Height the stack was asked to fit into. When [totalHeight] exceeds it
@@ -152,7 +153,12 @@ StackSpec solveStack({
   peek = peek.clamp(1.0, double.infinity);
 
   final total = cardHeight + strips * peek;
-  final originY = total >= height ? 0.0 : (height - total) / 2;
+  // Sits on the bottom of its box, not in the middle of it. The cards are a
+  // fixed height, so on a phone taller than this deck needs the spare room is
+  // all at one end — and putting it above the deck leaves the whole thing
+  // stranded mid-screen, out of reach of a thumb. A deck that fills its box,
+  // like the one this launcher was built for, is unaffected.
+  final originY = total >= height ? 0.0 : height - total;
 
   return StackSpec(
     peek: peek,

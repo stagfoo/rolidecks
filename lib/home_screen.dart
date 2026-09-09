@@ -50,6 +50,10 @@ class _HomeScreenState extends State<HomeScreen>
   final _scroll = ScrollController();
   StackSpec? _lastSpec;
 
+  /// Where the deck sits inside the stack area, so the rail can line up with
+  /// it rather than with the screen.
+  ({double top, double height})? _railBand;
+
   bool _loading = true;
   bool _isDefault = true;
   StreamSubscription<String>? _packageSub;
@@ -346,28 +350,54 @@ class _HomeScreenState extends State<HomeScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: LayoutBuilder(builder: (context, c) => _restingStack(c))),
-          SideRail(
-            cardCount: _deck.length,
-            focusedIndex: _focused,
-            onFocusChanged: _focus,
-            color: colorOf(_deck[_focused.clamp(0, _deck.length - 1)].colorKey),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final spec = solveStack(
+                  height: constraints.maxHeight,
+                  cardCount: _deck.length,
+                  focusedIndex: _focused,
+                );
+                // Kept so the knob can scroll a long deck to the card it just
+                // selected; a plain field, not setState, since this is build.
+                _lastSpec = spec;
+                _railBand = (
+                  top: spec.originY,
+                  height: spec.totalHeight.clamp(0.0, constraints.maxHeight),
+                );
+                return _restingStack(spec);
+              },
+            ),
           ),
+          // The rail spans the deck, not the screen. With the deck hanging from
+          // the bottom of a tall phone, a full-height track would leave the
+          // grip sitting somewhere the cards are not.
+          _rail(),
         ],
       ),
     );
   }
 
-  Widget _restingStack(BoxConstraints constraints) {
-    final spec = solveStack(
-      height: constraints.maxHeight,
+  Widget _rail() {
+    final band = _railBand;
+    final rail = SideRail(
       cardCount: _deck.length,
       focusedIndex: _focused,
+      onFocusChanged: _focus,
+      color: colorOf(_deck[_focused.clamp(0, _deck.length - 1)].colorKey),
     );
-    // Kept so the knob can scroll a long deck to the card it just selected; a
-    // plain field, not setState, since this is build.
-    _lastSpec = spec;
+    if (band == null) return SizedBox(width: DeckMetrics.railWidth, child: rail);
+    return Padding(
+      padding: EdgeInsets.only(top: band.top),
+      child: SizedBox(
+        width: DeckMetrics.railWidth,
+        height: band.height,
+        child: rail,
+      ),
+    );
+  }
 
+  Widget _restingStack(StackSpec spec) {
     final stack = SizedBox(
       height: spec.totalHeight,
       child: Stack(

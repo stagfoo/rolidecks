@@ -194,6 +194,14 @@ colours this one doesn't know still opens rather than crashing.
 
 ## Fitting the panel
 
+The deck **hangs from the bottom** of its box rather than sitting in the middle.
+Cards are a fixed height, so on a phone taller than the deck needs, all the
+spare room is at one end — and putting it below would strand the whole thing
+mid-screen, out of thumb reach. On the phone this was built for there is no
+spare room, so nothing moves. The rail spans the deck rather than the screen,
+for the same reason: a full-height track would leave the grip somewhere the
+cards are not.
+
 `solveStack` fits the deck into whatever height it's given: it squeezes the
 strips first, then the card, because a slightly shorter card costs less than
 strips too thin to read a name in. Both have floors — the strip's floor is the

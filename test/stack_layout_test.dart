@@ -145,10 +145,32 @@ void main() {
       }
     });
 
-    test('a short deck is centred rather than pinned to the top', () {
+    test('a short deck hangs from the bottom, not the middle', () {
+      // On a phone taller than the deck needs, centring strands it mid-screen
+      // and out of thumb reach; the spare room belongs above it.
       final spec = solveStack(height: stackHeight, cardCount: 2, focusedIndex: 0);
-      expect(spec.originY, greaterThan(0));
-      expect(spec.originY, closeTo((stackHeight - spec.totalHeight) / 2, 0.01));
+      expect(spec.originY, closeTo(stackHeight - spec.totalHeight, 0.01));
+      expect(
+        spec.topOf(spec.cardCount - 1) + spec.cardHeight,
+        closeTo(stackHeight, 0.01),
+      );
+    });
+
+    test('a deck that fills its box is unmoved by that', () {
+      // The phone this was built for has no spare room, so nothing changes
+      // there.
+      final spec = solveStack(height: stackHeight, cardCount: 9, focusedIndex: 0);
+      expect(spec.originY, closeTo(stackHeight - spec.totalHeight, 0.01));
+      expect(spec.originY, lessThan(1));
+    });
+
+    test('on a tall screen the deck lands in the lower half', () {
+      // A tall phone: fixed-height cards mean the deck is the size it is, and
+      // hanging it from the bottom puts it where a thumb can reach.
+      const tall = 800.0;
+      final spec = solveStack(height: tall, cardCount: 6, focusedIndex: 0);
+      expect(spec.originY, greaterThan(tall / 2));
+      expect(spec.totalHeight, lessThan(tall));
     });
 
     test('a crowded deck overflows to be scrolled, it does not crush strips', () {
