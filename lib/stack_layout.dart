@@ -34,8 +34,7 @@ class StackSpec {
   final int cardCount;
   final int focusedIndex;
 
-  /// Top of the stack. A deck shorter than its box hangs from the bottom of
-  /// it, so it stays under the thumb on a tall screen.
+  /// Top of the stack, placed by [deckAlignment].
   final double originY;
 
   /// Height the stack was asked to fit into. When [totalHeight] exceeds it
@@ -80,6 +79,15 @@ class StackSpec {
   /// What the eye actually gets of card [index].
   double revealOf(int index) => index == focusedIndex ? cardHeight : peek;
 }
+
+/// Where a deck shorter than its box sits in it: 0 hangs it from the top, 0.5
+/// centres it, 1 pins it to the bottom.
+///
+/// Cards are a fixed height, so on a phone taller than the deck needs, all the
+/// spare room is at one end or the other and this decides which. Centred looks
+/// composed; pinned to the bottom keeps it under a thumb. On the phone this was
+/// built for the deck fills its box, so the value makes no difference there.
+const double deckAlignment = 0.5;
 
 class StackStyle {
   const StackStyle({
@@ -153,12 +161,7 @@ StackSpec solveStack({
   peek = peek.clamp(1.0, double.infinity);
 
   final total = cardHeight + strips * peek;
-  // Sits on the bottom of its box, not in the middle of it. The cards are a
-  // fixed height, so on a phone taller than this deck needs the spare room is
-  // all at one end — and putting it above the deck leaves the whole thing
-  // stranded mid-screen, out of reach of a thumb. A deck that fills its box,
-  // like the one this launcher was built for, is unaffected.
-  final originY = total >= height ? 0.0 : height - total;
+  final originY = total >= height ? 0.0 : (height - total) * deckAlignment;
 
   return StackSpec(
     peek: peek,

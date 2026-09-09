@@ -145,32 +145,28 @@ void main() {
       }
     });
 
-    test('a short deck hangs from the bottom, not the middle', () {
-      // On a phone taller than the deck needs, centring strands it mid-screen
-      // and out of thumb reach; the spare room belongs above it.
+    test('a short deck is placed by the deck alignment', () {
+      // Cards are a fixed height, so on a screen taller than the deck needs the
+      // spare room is all at one end; this is which.
       final spec = solveStack(height: stackHeight, cardCount: 2, focusedIndex: 0);
-      expect(spec.originY, closeTo(stackHeight - spec.totalHeight, 0.01));
       expect(
-        spec.topOf(spec.cardCount - 1) + spec.cardHeight,
-        closeTo(stackHeight, 0.01),
+        spec.originY,
+        closeTo((stackHeight - spec.totalHeight) * deckAlignment, 0.01),
       );
     });
 
-    test('a deck that fills its box is unmoved by that', () {
-      // The phone this was built for has no spare room, so nothing changes
-      // there.
+    test('a deck that fills its box is unaffected by the alignment', () {
+      // The phone this was built for has no spare room, so the value makes no
+      // difference there whichever way it is set.
       final spec = solveStack(height: stackHeight, cardCount: 9, focusedIndex: 0);
-      expect(spec.originY, closeTo(stackHeight - spec.totalHeight, 0.01));
       expect(spec.originY, lessThan(1));
     });
 
-    test('on a tall screen the deck lands in the lower half', () {
-      // A tall phone: fixed-height cards mean the deck is the size it is, and
-      // hanging it from the bottom puts it where a thumb can reach.
+    test('the deck stays inside its box on a tall screen', () {
       const tall = 800.0;
       final spec = solveStack(height: tall, cardCount: 6, focusedIndex: 0);
-      expect(spec.originY, greaterThan(tall / 2));
-      expect(spec.totalHeight, lessThan(tall));
+      expect(spec.originY, greaterThanOrEqualTo(0));
+      expect(spec.originY + spec.totalHeight, lessThanOrEqualTo(tall + 0.01));
     });
 
     test('a crowded deck overflows to be scrolled, it does not crush strips', () {
