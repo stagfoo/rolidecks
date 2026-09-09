@@ -200,9 +200,11 @@ decides which: `0.5` centres it, `1` pins it to the bottom within thumb reach.
 On the phone this was built for the deck fills its box, so the value changes
 nothing there.
 
-The rail runs the full height of the card area regardless. It is furniture:
-sized to the deck instead, it would grow and shrink every time a card was added
-or removed, and slide about as the deck moved.
+The rail is exactly as tall as the cards and sits with them, so a centred deck
+reads as one centred thing rather than a block of cards beside a full-height
+track. Both come out of a single layout pass — solving inside the stack and
+stashing the answer for the rail meant the rail was built before that ran, so it
+used the previous frame's numbers and none at all on the first.
 
 `solveStack` fits the deck into whatever height it's given: it squeezes the
 strips first, then the card, because a slightly shorter card costs less than

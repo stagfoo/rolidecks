@@ -344,29 +344,38 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _stack() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(DeckMetrics.gutter, 4, 4, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final spec = solveStack(
-                  height: constraints.maxHeight,
-                  cardCount: _deck.length,
-                  focusedIndex: _focused,
-                );
-                // Kept so the knob can scroll a long deck to the card it just
-                // selected; a plain field, not setState, since this is build.
-                _lastSpec = spec;
-                return _restingStack(spec);
-              },
-            ),
-          ),
-          // Full height of the card area, always. The rail is furniture: sized
-          // to the deck it would grow and shrink every time a card was added or
-          // removed, and slide about as the deck moved.
-          _rail(),
-        ],
+      // One layout pass for both. Solving inside the stack and stashing the
+      // result for the rail meant the rail was built before that ran, so it
+      // used the previous frame's numbers — and none at all on the first.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final spec = solveStack(
+            height: constraints.maxHeight,
+            cardCount: _deck.length,
+            focusedIndex: _focused,
+          );
+          // Kept so the knob can scroll a long deck to the card it just
+          // selected; a plain field, not setState, since this is build.
+          _lastSpec = spec;
+
+          final reveal = spec.totalHeight.clamp(0.0, constraints.maxHeight);
+          final below =
+              (constraints.maxHeight - spec.originY - reveal).clamp(0.0, double.infinity);
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _restingStack(spec)),
+              Padding(
+                // The rail is exactly as tall as the cards and sits with them,
+                // so a centred deck reads as one centred thing rather than a
+                // block of cards beside a full-height track.
+                padding: EdgeInsets.only(top: spec.originY, bottom: below),
+                child: _rail(),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
