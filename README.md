@@ -200,8 +200,9 @@ decides which: `0.5` centres it, `1` pins it to the bottom within thumb reach.
 On the phone this was built for the deck fills its box, so the value changes
 nothing there.
 
-The rail spans the deck rather than the screen, whichever way that goes — a
-full-height track would leave the grip somewhere the cards are not.
+The rail runs the full height of the card area regardless. It is furniture:
+sized to the deck instead, it would grow and shrink every time a card was added
+or removed, and slide about as the deck moved.
 
 `solveStack` fits the deck into whatever height it's given: it squeezes the
 strips first, then the card, because a slightly shorter card costs less than
