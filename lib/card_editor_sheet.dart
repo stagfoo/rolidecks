@@ -200,8 +200,14 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
             const SizedBox(height: 20),
             Row(
               children: [
-                _DeleteButton(onTap: _confirmDelete),
-                const SizedBox(width: 10),
+                // No delete for the all-apps card: it is the terminal card and
+                // the stack, the knob and the folder screen all assume it is
+                // there. The deck refuses to remove it anyway — this is so the
+                // sheet does not offer a button that would do nothing.
+                if (!_draft.isAllApps) ...[
+                  _DeleteButton(onTap: _confirmDelete),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(child: _doneButton()),
               ],
             ),

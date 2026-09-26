@@ -84,14 +84,46 @@ void main() {
       // The footer is not part of the reorderable list, so it carries no
       // handle of its own — asserted against the footer's own subtree rather
       // than a global count, which only reflects whatever is on screen.
+      //
+      // Anchored on the row's Container. It used to be the Opacity that dimmed
+      // the row to say "not editable"; the row is editable now, so that wrapper
+      // is gone and anchoring on it silently stopped finding anything.
       expect(
         find.descendant(
-          of: find.ancestor(of: footer, matching: find.byType(Opacity)).first,
+          of: find.ancestor(of: footer, matching: find.byType(Container)).first,
           matching: find.byType(ReorderableDragStartListener),
         ),
         findsNothing,
       );
     });
+
+    testWidgets('all apps opens the editor when tapped', (tester) async {
+      // It was dimmed and inert; its name, colour, icon and rows are choices
+      // like any other card's now.
+      await pump(tester, CardDeck.seed());
+      final footer = find.textContaining('always last');
+      await tester.scrollUntilVisible(footer, 100, scrollable: deckList);
+      await tester.tap(footer);
+      await tester.pumpAndSettle();
+      expect(find.text('Rows of icons'), findsOneWidget);
+      expect(find.text('Colour'), findsOneWidget);
+    });
+
+    testWidgets('all apps is offered no way to be filled', (tester) async {
+      // No add chip on the footer: the deck drops apps filed under all apps, so
+      // an add button could only look like it worked.
+      await pump(tester, CardDeck.seed());
+      final footer = find.textContaining('always last');
+      await tester.scrollUntilVisible(footer, 100, scrollable: deckList);
+      expect(
+        find.descendant(
+          of: find.ancestor(of: footer, matching: find.byType(Container)).first,
+          matching: find.byIcon(Icons.add_rounded),
+        ),
+        findsNothing,
+      );
+    });
+
   });
 
   group('tapping a card opens its editor', () {

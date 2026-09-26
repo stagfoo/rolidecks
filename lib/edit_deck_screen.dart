@@ -202,11 +202,17 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
   }
 
   /// All apps is the back of the deck: no handle, no +, nothing to file.
+  /// The terminal card, at the foot of the list.
+  ///
+  /// Editable like the others, but not dimmed and not draggable: it can be
+  /// restyled, and it still cannot be moved, deleted, or filled. It carries no
+  /// add chip for that last reason — the deck would drop the apps anyway, so
+  /// offering it would only look like it worked.
   Widget _allAppsRow() {
     final card = _deck.cards.last;
     final onCard = onCardForKey(card.colorKey);
-    return Opacity(
-      opacity: 0.5,
+    return GestureDetector(
+      onTap: () => _editCard(card, _deck.folders.length),
       child: Container(
         decoration: BoxDecoration(
           color: colorOf(card.colorKey),

@@ -44,6 +44,40 @@ Future<CardEditResult?> open(
   return result;
 }
 
+/// Opens the editor on an arbitrary card, for the all-apps case.
+Future<CardEditResult?> openCard(
+  WidgetTester tester,
+  DeckCard subject, {
+  int position = 2,
+  int folderCount = 5,
+}) async {
+  CardEditResult? result;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () async {
+                result = await showCardEditor(
+                  context,
+                  subject,
+                  position: position,
+                  folderCount: folderCount,
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  return result;
+}
+
 /// The sheet scrolls, so the delete button can sit below the fold in the test
 /// viewport even though it is reachable on the device.
 Future<void> tapDelete(WidgetTester tester) async {
@@ -169,6 +203,40 @@ void main() {
       await tester.enterText(find.byType(TextField), '   ');
       await tester.pump();
       expect(find.text('media'), findsOneWidget);
+    });
+  });
+
+  group('the all-apps card', () {
+    testWidgets('opens in the editor and can be restyled', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await openCard(tester, CardDeck.allAppsCard);
+      // The same controls as any other card.
+      expect(find.text('Rows of icons'), findsOneWidget);
+      expect(find.text('App titles'), findsOneWidget);
+      expect(find.text('Colour'), findsOneWidget);
+    });
+
+    testWidgets('is not offered a delete button', (tester) async {
+      // The deck refuses to remove it, so a delete button here could only do
+      // nothing.
+      SharedPreferences.setMockInitialValues({});
+      await openCard(tester, CardDeck.allAppsCard);
+
+      // Scrolled to the button row first, and Done asserted present in the same
+      // breath: a bare findsNothing would pass just as well if the row were
+      // merely below the fold, which would prove nothing at all.
+      final done = find.text('Done');
+      await tester.ensureVisible(done);
+      await tester.pumpAndSettle();
+      expect(done, findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
+    });
+
+    testWidgets('an ordinary card still is', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await openCard(tester, card);
+      await tapDelete(tester);
+      expect(find.textContaining('Delete'), findsWidgets);
     });
   });
 }

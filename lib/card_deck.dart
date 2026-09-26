@@ -178,9 +178,24 @@ class CardDeck {
 
   /// Guarantees the invariant the whole layout leans on: exactly one all-apps
   /// card, and it is last.
+  /// The one shape a deck is ever allowed to have: folders in order, then
+  /// exactly one all-apps card, last.
+  ///
+  /// The all-apps card is carried through rather than replaced with
+  /// [allAppsCard]. It used to be re-appended from that constant on every
+  /// mutation, which kept the invariants for free but also meant the card could
+  /// not be styled — every edit to it was discarded one layer below the editor.
+  /// Its *contents* are still not its own: [appIds] is forced empty here, so
+  /// "apps cannot be filed under all apps" is a property of the deck rather
+  /// than something the UI has to remember not to offer.
   static CardDeck normalised(List<DeckCard> cards) {
     final folders = [for (final card in cards) if (!card.isAllApps) card];
-    return CardDeck([...folders, allAppsCard]);
+    final existing = cards.where((card) => card.isAllApps);
+    final terminal = existing.isEmpty ? allAppsCard : existing.first;
+    return CardDeck([
+      ...folders,
+      terminal.appIds.isEmpty ? terminal : terminal.copyWith(appIds: const []),
+    ]);
   }
 
   CardDeck addCard(String name) {
@@ -196,10 +211,16 @@ class CardDeck {
     ]);
   }
 
+  /// Applies [change] to the card with [id], all-apps included.
+  ///
+  /// No longer refuses the all-apps card: its name, colour, icon, picture,
+  /// titles and row count are as much a choice as any other card's. What it
+  /// cannot change is what the card *is* — [normalised] re-asserts that it
+  /// stays last and holds no apps of its own, and `copyWith` cannot clear
+  /// `isAllApps`, so there is no way through here to turn it into a folder.
   CardDeck updateCard(String id, DeckCard Function(DeckCard) change) {
     return normalised([
-      for (final card in cards)
-        if (card.id == id && !card.isAllApps) change(card) else card,
+      for (final card in cards) if (card.id == id) change(card) else card,
     ]);
   }
 
@@ -292,8 +313,14 @@ class CardDeck {
   // seeded card's icon matches the shelf it is shown next to.
   static const _seedIcons = starterIconKeys;
 
+  /// Every card, all-apps included.
+  ///
+  /// It used to write only the folders and let [fromJson] put a fresh
+  /// [allAppsCard] back, which is why styling it appeared to work until the
+  /// launcher was reopened. Now that the card carries state, dropping it on the
+  /// way out would silently discard exactly that state.
   List<Map<String, dynamic>> toJson() =>
-      [for (final card in folders) card.toJson()];
+      [for (final card in cards) card.toJson()];
 
   static CardDeck fromJson(Object? json) {
     // normalised rather than an empty deck: a corrupt or missing stored value

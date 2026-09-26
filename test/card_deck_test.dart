@@ -32,10 +32,49 @@ void main() {
       expect(deck.cards.last.isAllApps, isTrue);
     });
 
+    test('can be restyled like any other card', () {
+      // Name, colour, icon, titles and rows are as much a choice here as on a
+      // folder. What it cannot become is a folder.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(
+          name: 'everything',
+          colorKey: 'violet',
+          iconKey: 'menu_book',
+          showAppLabels: false,
+          appRows: 3,
+        ),
+      );
+      final card = deck.cards.last;
+      expect(card.name, 'everything');
+      expect(card.colorKey, 'violet');
+      expect(card.iconKey, 'menu_book');
+      expect(card.showAppLabels, isFalse);
+      expect(card.appRows, 3);
+      expect(card.isAllApps, isTrue);
+    });
+
     test('cannot be edited into an ordinary card', () {
-      final deck = CardDeck.seed()
-          .updateCard(CardDeck.allAppsId, (card) => card.copyWith(name: 'hijacked'));
-      expect(deck.cards.last.name, 'all apps');
+      // Restyling it must not be a way to turn it into a folder: it stays the
+      // terminal card, stays last, and there is still exactly one of it.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(name: 'hijacked'),
+      );
+      expect(deck.cards.last.isAllApps, isTrue);
+      expect(deck.cards.where((card) => card.isAllApps), hasLength(1));
+      expect(deck.folders.any((card) => card.id == CardDeck.allAppsId), isFalse);
+    });
+
+    test('cannot be given apps of its own, however it is edited', () {
+      // The card shows everything installed, so a list of its own would be
+      // meaningless — and this is the layer that guarantees it rather than the
+      // editor simply not offering an add button.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(appIds: const ['com.example.thing']),
+      );
+      expect(deck.cards.last.appIds, isEmpty);
     });
 
     test('cannot be displaced from the bottom by a reorder', () {
@@ -236,9 +275,48 @@ void main() {
       expect(restored.cards.last.isAllApps, isTrue);
     });
 
-    test('the all-apps card is not written out — it is always re-added', () {
-      expect(CardDeck.seed().toJson().any((card) => card['isAllApps'] == true),
-          isFalse);
+    test('the all-apps card is written out, so its styling survives', () {
+      // It used to be dropped on the way out and re-added from a constant on
+      // the way in, which is why styling it appeared to work until the launcher
+      // was reopened.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(
+          name: 'everything',
+          colorKey: 'violet',
+          appRows: 4,
+        ),
+      );
+      expect(deck.toJson().any((card) => card['isAllApps'] == true), isTrue);
+
+      final restored = CardDeck.fromJson(deck.toJson());
+      expect(restored.cards.last.name, 'everything');
+      expect(restored.cards.last.colorKey, 'violet');
+      expect(restored.cards.last.appRows, 4);
+      expect(restored.cards.last.isAllApps, isTrue);
+      expect(restored.cards.where((card) => card.isAllApps), hasLength(1));
+    });
+
+    test('a deck stored before all apps was written out still gets one', () {
+      // Every existing install: folders only, no terminal card in the json.
+      final legacy = CardDeck.seed()
+          .toJson()
+          .where((card) => card['isAllApps'] != true)
+          .toList();
+      final restored = CardDeck.fromJson(legacy);
+      expect(restored.cards.last.isAllApps, isTrue);
+      expect(restored.cards.last.name, 'all apps');
+      expect(restored.cards.where((card) => card.isAllApps), hasLength(1));
+    });
+
+    test('a stored deck carrying two all-apps cards comes back with one', () {
+      final doubled = [
+        ...CardDeck.seed().toJson(),
+        CardDeck.allAppsCard.copyWith(name: 'duplicate').toJson(),
+      ];
+      final restored = CardDeck.fromJson(doubled);
+      expect(restored.cards.where((card) => card.isAllApps), hasLength(1));
+      expect(restored.cards.last.isAllApps, isTrue);
     });
 
     test('survives corrupt or absent stored data', () {
