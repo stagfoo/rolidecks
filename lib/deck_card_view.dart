@@ -248,6 +248,10 @@ class DeckCardView extends StatelessWidget {
       apps: apps,
       cardColor: color,
       showLabels: card.showAppLabels,
+      // Only the open card is tall enough for its extra rows; a covered card is
+      // showing its name strip and nothing else, so laying its apps out in four
+      // rows would be work nobody sees.
+      rows: focused ? card.appRows : 1,
       onTap: onAppTap,
       onLongPress: onAppLongPress,
     );

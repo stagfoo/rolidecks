@@ -9,6 +9,15 @@ library;
 import 'card_style.dart';
 import 'models.dart';
 
+/// The most rows of icons a card can be given.
+///
+/// Four because the deck is the point: a card tall enough for five rows leaves
+/// no room for the strips of the cards below it on a phone-sized panel, and a
+/// deck you cannot see the rest of is no longer a deck.
+const int maxAppRows = 4;
+
+int clampAppRows(int rows) => rows.clamp(1, maxAppRows);
+
 class DeckCard {
   const DeckCard({
     required this.id,
@@ -19,6 +28,7 @@ class DeckCard {
     this.isAllApps = false,
     this.imageOffset = 0,
     this.showAppLabels = true,
+    this.appRows = 1,
   });
 
   final String id;
@@ -46,6 +56,15 @@ class DeckCard {
   /// utilities does.
   final bool showAppLabels;
 
+  /// How many rows of icons this card shows when it is the open one, 1 to
+  /// [maxAppRows].
+  ///
+  /// Only the open card is ever this tall. A covered card shows its bottom
+  /// strip and nothing else, so its row count makes no difference to the deck
+  /// until it is opened — which is the point: a four-row card costs nothing
+  /// while it is closed, and pushes the cards below it down when it opens.
+  final int appRows;
+
   /// The terminal card. It holds no [appIds] of its own — it shows everything
   /// installed — and it cannot be deleted or moved off the bottom.
   final bool isAllApps;
@@ -59,6 +78,7 @@ class DeckCard {
     List<String>? appIds,
     double? imageOffset,
     bool? showAppLabels,
+    int? appRows,
   }) {
     return DeckCard(
       id: id,
@@ -69,6 +89,7 @@ class DeckCard {
       isAllApps: isAllApps,
       imageOffset: imageOffset ?? this.imageOffset,
       showAppLabels: showAppLabels ?? this.showAppLabels,
+      appRows: clampAppRows(appRows ?? this.appRows),
     );
   }
 
@@ -95,6 +116,10 @@ class DeckCard {
         'isAllApps': isAllApps,
         if (imageOffset != 0) 'imageOffset': imageOffset,
         if (!showAppLabels) 'showAppLabels': false,
+        // Omitted at the default, like showAppLabels: a deck written before
+        // this existed reads back identically, and one that never changed a row
+        // count does not carry the field.
+        if (appRows != 1) 'appRows': appRows,
       };
 
   static DeckCard fromJson(Map<String, dynamic> json) {
@@ -114,6 +139,10 @@ class DeckCard {
       imageOffset:
           ((json['imageOffset'] as num?)?.toDouble() ?? 0).clamp(-1.0, 1.0),
       showAppLabels: json['showAppLabels'] as bool? ?? true,
+      // Clamped on the way in for the same reason imageOffset is: a count from
+      // a newer build, or a hand-edited file, would otherwise lay out a card
+      // taller than the stack can place.
+      appRows: clampAppRows((json['appRows'] as num?)?.toInt() ?? 1),
     );
   }
 }

@@ -274,4 +274,47 @@ void main() {
       expect(searchApps(installed, '  ').length, 2);
     });
   });
+
+  group('rows of icons', () {
+    DeckCard card({int? appRows}) => DeckCard(
+          id: 'c1',
+          name: 'Card',
+          colorKey: cardPalette.first.key,
+          iconKey: 'star',
+          appRows: appRows ?? 1,
+        );
+
+    test('defaults to one row, and is left out of the json at the default', () {
+      expect(card().appRows, 1);
+      expect(card().toJson().containsKey('appRows'), isFalse);
+    });
+
+    test('round-trips through json', () {
+      for (final rows in [2, 3, 4]) {
+        final json = card(appRows: rows).toJson();
+        expect(json['appRows'], rows);
+        expect(DeckCard.fromJson(json).appRows, rows, reason: '$rows rows');
+      }
+    });
+
+    test('a deck saved before rows existed reads back as one row', () {
+      final json = card().toJson()..remove('appRows');
+      expect(DeckCard.fromJson(json).appRows, 1);
+    });
+
+    test('a count outside the range is clamped rather than laid out', () {
+      // A card taller than the stack can place would push every strip off the
+      // box, so this is clamped on the way in like imageOffset is.
+      expect(DeckCard.fromJson({...card().toJson(), 'appRows': 9}).appRows,
+          maxAppRows);
+      expect(DeckCard.fromJson({...card().toJson(), 'appRows': 0}).appRows, 1);
+      expect(DeckCard.fromJson({...card().toJson(), 'appRows': -3}).appRows, 1);
+      expect(card().copyWith(appRows: 99).appRows, maxAppRows);
+      expect(card().copyWith(appRows: 0).appRows, 1);
+    });
+
+    test('copyWith leaves it alone when not asked', () {
+      expect(card(appRows: 3).copyWith(name: 'Renamed').appRows, 3);
+    });
+  });
 }

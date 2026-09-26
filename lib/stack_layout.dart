@@ -13,6 +13,8 @@
 /// Pure Dart, so it can be pinned down at the exact size this phone reports.
 library;
 
+import 'card_deck.dart';
+
 class StackSpec {
   const StackSpec({
     required this.peek,
@@ -21,6 +23,8 @@ class StackSpec {
     required this.focusedIndex,
     required this.originY,
     required this.boxHeight,
+    this.rowHeight = StackStyle.defaultRowHeight,
+    this.rows = const [],
   });
 
   /// How much of a covered card stays visible: its top strip.
@@ -42,12 +46,28 @@ class StackSpec {
   /// stack scrolls rather than crushing the strips.
   final double boxHeight;
 
+  /// What each row of icons past the first adds to a card's height.
+  final double rowHeight;
+
+  /// Rows of icons per card, parallel to the deck. Empty means every card is a
+  /// single row, which is the whole deck before anyone changes one.
+  final List<int> rows;
+
+  /// Rows on card [index], defaulting to one.
+  int rowsOf(int index) =>
+      index >= 0 && index < rows.length ? rows[index] : 1;
+
   bool get overflows => totalHeight > boxHeight + 0.01;
 
   /// Total revealed height. The focused card is seen whole, everything else
   /// contributes its strip.
-  double get totalHeight =>
-      cardCount <= 0 ? 0 : cardHeight + (cardCount - 1) * peek;
+  ///
+  /// So the only card whose row count changes the deck's height is the open
+  /// one. Opening a four-row card grows the stack and pushes everything below
+  /// it down; closing it gives that room straight back.
+  double get totalHeight => cardCount <= 0
+      ? 0
+      : heightOf(focusedIndex) + (cardCount - 1) * peek;
 
   /// Top edge of card [index].
   ///
@@ -55,29 +75,54 @@ class StackSpec {
   /// another. Cards in front of the focused one are pushed up so their *bottom*
   /// edges land a strip apart, clearing the focused card entirely — the last of
   /// them ends exactly where the focused card begins.
+  /// Cards are positioned by the edge that shows, not by their top, which is
+  /// what lets them differ in height without disturbing each other. A card in
+  /// front of the focused one is placed by its *bottom* — a strip below the one
+  /// before it — and a card behind the focused one by the top of its strip, a
+  /// strip below the card in front. Only the focused card is placed by its top.
+  ///
+  /// With every card a single row this reduces exactly to the flat
+  /// `originY + index * peek`, which is why the whole deck is unmoved until a
+  /// card is actually given more rows.
   double topOf(int index) {
     if (index < focusedIndex) {
-      return originY + (index + 1) * peek - cardHeight;
+      return originY + (index + 1) * peek - heightOf(index);
     }
-    return originY + index * peek;
+    if (index == focusedIndex) {
+      return originY + index * peek;
+    }
+    return revealTopOf(index) - (heightOf(index) - peek);
   }
 
   /// Where the visible slice of card [index] starts. For a covered card that
   /// is its bottom strip; the focused card is visible from its top.
-  double revealTopOf(int index) => index == focusedIndex
-      ? topOf(index)
-      : topOf(index) + cardHeight - peek;
+  double revealTopOf(int index) {
+    if (index == focusedIndex) return originY + index * peek;
+    if (index < focusedIndex) return originY + index * peek;
+    // Behind the focused card: the first one starts where the focused card
+    // ends, and the rest follow a strip apart. Written from the focused card's
+    // bottom rather than from index alone, because that bottom is the only
+    // thing its height can move.
+    return originY +
+        focusedIndex * peek +
+        heightOf(focusedIndex) +
+        (index - focusedIndex - 1) * peek;
+  }
 
   /// Back-to-front paint order. The first card is the front of the deck, so it
   /// is painted last; "all apps" is painted first and stays at the very back.
   List<int> get paintOrder =>
       [for (var i = cardCount - 1; i >= 0; i--) i];
 
-  /// Cards are all [cardHeight]; only how much of one is visible varies.
-  double heightOf(int index) => cardHeight;
+  /// How tall card [index] is drawn — its base height plus the rows it was
+  /// given past the first. A covered card is drawn at its full height just as
+  /// before; only how much of it shows varies.
+  double heightOf(int index) =>
+      cardHeight + (rowsOf(index) - 1) * rowHeight;
 
   /// What the eye actually gets of card [index].
-  double revealOf(int index) => index == focusedIndex ? cardHeight : peek;
+  double revealOf(int index) =>
+      index == focusedIndex ? heightOf(index) : peek;
 }
 
 /// Where a deck shorter than its box sits in it: 0 hangs it from the top, 0.5
@@ -95,6 +140,7 @@ class StackStyle {
     this.minPeek = 32,
     this.preferredCardHeight = 158,
     this.minCardHeight = 108,
+    this.rowHeight = defaultRowHeight,
   });
 
   final double preferredPeek;
@@ -106,11 +152,25 @@ class StackStyle {
   final double preferredCardHeight;
   final double minCardHeight;
 
+  /// What each row of icons past the first adds to a card.
+  ///
+  /// One icon and its title, plus the gap above the next row — the single-row
+  /// card already has the room for its own row inside [preferredCardHeight], so
+  /// this is the cost of each *extra* one. Kept here rather than in the card
+  /// widget because the stack has to know a card's height before the card is
+  /// built, and two copies of this number would drift into the rows not fitting
+  /// the space reserved for them.
+  final double rowHeight;
+
   static const standard = StackStyle();
 
   /// The fixed top strip of a card: name on the left, mark on the right. Kept
   /// here because it is the floor [minPeek] has to respect.
   static const headerHeight = 32.0;
+
+  /// The default [rowHeight], as a constant so a [StackSpec] built without a
+  /// style can still state one.
+  static const defaultRowHeight = 64.0;
 }
 
 /// Fits [cardCount] overlapping cards into [height].
@@ -122,6 +182,7 @@ StackSpec solveStack({
   required int cardCount,
   required int focusedIndex,
   StackStyle style = StackStyle.standard,
+  List<int> rows = const [],
 }) {
   if (cardCount <= 0) {
     return StackSpec(
@@ -131,23 +192,32 @@ StackSpec solveStack({
       focusedIndex: 0,
       originY: 0,
       boxHeight: height,
+      rowHeight: style.rowHeight,
+      rows: rows,
     );
   }
 
   final safeIndex = focusedIndex.clamp(0, cardCount - 1);
   final strips = cardCount - 1;
 
+  // Only the focused card is drawn at full height, so its extra rows are the
+  // only ones competing with the strips for the box. The rest can be as tall as
+  // they like while closed.
+  final focusedRows =
+      safeIndex < rows.length ? clampAppRows(rows[safeIndex]) : 1;
+  final extra = (focusedRows - 1) * style.rowHeight;
+
   var cardHeight = style.preferredCardHeight;
   var peek = style.preferredPeek;
 
   if (strips > 0) {
-    final spare = height - cardHeight;
+    final spare = height - cardHeight - extra;
     final fitted = spare / strips;
     if (fitted < peek) peek = fitted;
 
     if (peek < style.minPeek) {
       peek = style.minPeek;
-      cardHeight = height - strips * peek;
+      cardHeight = height - strips * peek - extra;
 
       // If the card would now be below its floor there are simply more cards
       // than fit. Both floors hold and the stack overflows, to be scrolled —
@@ -160,7 +230,7 @@ StackSpec solveStack({
   cardHeight = cardHeight.clamp(style.minCardHeight, double.infinity);
   peek = peek.clamp(1.0, double.infinity);
 
-  final total = cardHeight + strips * peek;
+  final total = cardHeight + extra + strips * peek;
   final originY = total >= height ? 0.0 : (height - total) * deckAlignment;
 
   return StackSpec(
@@ -170,6 +240,8 @@ StackSpec solveStack({
     focusedIndex: safeIndex,
     originY: originY,
     boxHeight: height,
+    rowHeight: style.rowHeight,
+    rows: rows,
   );
 }
 

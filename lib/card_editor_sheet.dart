@@ -5,6 +5,7 @@ import 'card_style.dart';
 import 'deck_card_view.dart';
 import 'models.dart';
 import 'launcher_bridge.dart';
+import 'stack_layout.dart';
 import 'color_picker_screen.dart';
 import 'style_recents.dart';
 import 'icon_picker_screen.dart';
@@ -181,6 +182,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
             const SizedBox(height: 4),
             _labelsRow(),
             const SizedBox(height: 14),
+            _label('Rows of icons'),
+            const SizedBox(height: 8),
+            _rowsRow(),
+            const SizedBox(height: 14),
             _label('Picture'),
             const SizedBox(height: 8),
             _imageRow(),
@@ -304,7 +309,11 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
   /// preview that lies: a picture squashed into a band no card is ever that
   /// shape, so what you chose and what you got were different things.
   Widget _preview() {
-    const height = 158.0;
+    // Grows with the row count, for the reason above: a two-row card previewed
+    // at one row's height is the same lie in a different direction — the rows
+    // would be squeezed into a card the deck will never draw that short.
+    final height = StackStyle.standard.preferredCardHeight +
+        (_draft.appRows - 1) * StackStyle.standard.rowHeight;
     // The same fallback save applies, so the preview shows what you would get
     // rather than the blank you are momentarily typing.
     final card = DeckCardView(
@@ -386,6 +395,51 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
             () => _draft = _draft.copyWith(showAppLabels: value),
           ),
         ),
+      ],
+    );
+  }
+
+  /// How many rows of icons the card shows when it is open.
+  ///
+  /// Whole numbers, so a segmented control rather than a slider: there are four
+  /// of them and each is a different layout, not a value to find by feel.
+  Widget _rowsRow() {
+    final accent = colorOf(_draft.colorKey);
+    return Row(
+      children: [
+        for (var rows = 1; rows <= maxAppRows; rows++) ...[
+          if (rows > 1) const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(
+                () => _draft = _draft.copyWith(appRows: rows),
+              ),
+              child: Container(
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _draft.appRows == rows ? accent : DeckColors.surface,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(
+                    color: _draft.appRows == rows
+                        ? accent
+                        : DeckColors.surfaceEdge,
+                  ),
+                ),
+                child: Text(
+                  '$rows',
+                  style: deckText(
+                    size: 15,
+                    weight: 700,
+                    color: _draft.appRows == rows
+                        ? onCardFor(accent)
+                        : DeckColors.text,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

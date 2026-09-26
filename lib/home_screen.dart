@@ -372,6 +372,7 @@ class _HomeScreenState extends State<HomeScreen>
             height: constraints.maxHeight,
             cardCount: _deck.length,
             focusedIndex: _focused,
+            rows: [for (final card in _deck.cards) card.appRows],
           );
           // Kept so the knob can scroll a long deck to the card it just
           // selected; a plain field, not setState, since this is build.

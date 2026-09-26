@@ -318,4 +318,193 @@ void main() {
       expect(cardIndexForKnobPosition(y: 200, trackHeight: track, cardCount: 1), 0);
     });
   });
+
+  group('rows of icons', () {
+    // A taller stack than the panel, so a four-row card has somewhere to grow
+    // into and the tests are measuring geometry rather than the overflow floor.
+    const tallBox = 700.0;
+    const rowHeight = StackStyle.defaultRowHeight;
+
+    StackSpec specFor(List<int> rows, int focus, {double height = tallBox}) =>
+        solveStack(
+          height: height,
+          cardCount: rows.length,
+          focusedIndex: focus,
+          rows: rows,
+        );
+
+    test('a card given more rows is drawn taller, by one row each', () {
+      final spec = specFor([1, 2, 3, 4], 0);
+      for (var i = 0; i < 4; i++) {
+        expect(
+          spec.heightOf(i),
+          closeTo(spec.cardHeight + i * rowHeight, 0.01),
+          reason: 'card $i',
+        );
+      }
+    });
+
+    test('a closed card with extra rows changes nothing about the deck', () {
+      // The whole point: a four-row card costs nothing until it is opened. Card
+      // 0 is focused in both, and the deck behind it must be laid out
+      // identically whatever row counts those closed cards carry.
+      final plain = specFor([1, 1, 1, 1, 1, 1], 0);
+      final mixed = specFor([1, 4, 2, 3, 4, 2], 0);
+
+      expect(mixed.totalHeight, closeTo(plain.totalHeight, 0.01));
+      expect(mixed.peek, closeTo(plain.peek, 0.01));
+      expect(mixed.originY, closeTo(plain.originY, 0.01));
+      for (var i = 0; i < 6; i++) {
+        expect(
+          mixed.revealTopOf(i),
+          closeTo(plain.revealTopOf(i), 0.01),
+          reason: 'card $i strip must not move',
+        );
+      }
+    });
+
+    test('opening a taller card pushes the cards below it down', () {
+      final closed = specFor([1, 1, 1, 1], 0);
+      final opened = specFor([1, 3, 1, 1], 1);
+
+      // Two extra rows on the card being opened.
+      expect(
+        opened.totalHeight - closed.totalHeight,
+        closeTo(2 * rowHeight, 0.01),
+      );
+      // From the second card behind the focused one onward: the first one sits
+      // below the focused card's whole height, not a strip.
+      expect(
+        opened.revealTopOf(2) - opened.revealTopOf(1),
+        closeTo(opened.heightOf(1), 0.01),
+      );
+      expect(
+        opened.revealTopOf(3) - opened.revealTopOf(2),
+        closeTo(opened.peek, 0.01),
+        reason: 'card 3 still sits a strip below card 2',
+      );
+    });
+
+    test('only the focused card\'s rows change the deck height', () {
+      // Same deck, same focus, different rows on a card that is not focused.
+      final a = specFor([2, 1, 1, 1], 0);
+      final b = specFor([2, 4, 4, 4], 0);
+      expect(a.totalHeight, closeTo(b.totalHeight, 0.01));
+
+      // And focusing the tall one is what grows it: card 0 already carried one
+      // extra row, so moving focus to a four-row card adds the two beyond it.
+      final focused = specFor([2, 4, 4, 4], 1);
+      expect(
+        focused.totalHeight - a.totalHeight,
+        closeTo(2 * rowHeight, 0.01),
+      );
+    });
+
+    test('every covered card still reveals exactly one strip, at its bottom',
+        () {
+      // The invariant the uniform-height version guaranteed for free. With
+      // per-card heights each card has to be placed by the edge that shows, so
+      // this is the one that catches placing them by their tops instead.
+      const rows = [1, 4, 2, 3, 1, 2];
+      for (var focus = 0; focus < rows.length; focus++) {
+        final spec = specFor(rows, focus);
+        for (var i = 0; i < spec.cardCount; i++) {
+          if (i == focus) continue;
+          expect(
+            spec.revealTopOf(i),
+            closeTo(spec.topOf(i) + spec.heightOf(i) - spec.peek, 0.01),
+            reason: 'focus $focus, card $i',
+          );
+          expect(spec.revealOf(i), spec.peek, reason: 'focus $focus, card $i');
+        }
+      }
+    });
+
+    test('strips stay a peek apart either side of the focused card', () {
+      const rows = [2, 3, 1, 4, 2];
+      for (var focus = 0; focus < rows.length; focus++) {
+        final spec = specFor(rows, focus);
+        for (var i = 1; i < spec.cardCount; i++) {
+          final gap = spec.revealTopOf(i) - spec.revealTopOf(i - 1);
+          expect(
+            gap,
+            closeTo(i == focus + 1 ? spec.heightOf(focus) : spec.peek, 0.01),
+            reason: 'focus $focus, card $i',
+          );
+        }
+      }
+    });
+
+    test('nothing in front of a tall focused card overlaps it', () {
+      const rows = [3, 2, 4, 1, 2];
+      for (final focus in [1, 2, 4]) {
+        final spec = specFor(rows, focus);
+        for (var i = 0; i < focus; i++) {
+          expect(
+            spec.topOf(i) + spec.heightOf(i),
+            lessThanOrEqualTo(spec.topOf(focus) + 0.01),
+            reason: 'focus $focus, card $i must clear it',
+          );
+        }
+        expect(
+          spec.topOf(focus - 1) + spec.heightOf(focus - 1),
+          closeTo(spec.topOf(focus), 0.01),
+          reason: 'focus $focus: the card in front ends where it begins',
+        );
+      }
+    });
+
+    test('the revealed deck is exactly as tall as it claims', () {
+      const rows = [1, 4, 2, 3, 2];
+      for (var focus = 0; focus < rows.length; focus++) {
+        final spec = specFor(rows, focus);
+        final top = spec.revealTopOf(0);
+        final last = spec.cardCount - 1;
+        final bottom = last == focus
+            ? spec.topOf(last) + spec.heightOf(last)
+            : spec.revealTopOf(last) + spec.peek;
+        expect(top, closeTo(spec.originY, 0.01), reason: 'focus $focus');
+        expect(bottom - top, closeTo(spec.totalHeight, 0.01),
+            reason: 'focus $focus');
+      }
+    });
+
+    test('a four-row card too tall for the box overflows rather than crushing',
+        () {
+      // Same trade the crowded deck makes: the rows and the strips both keep
+      // their floors and the stack scrolls. Squeezing rows into a card that
+      // cannot hold them is what would clip the icons on the device.
+      final spec = specFor([4, 1, 1, 1, 1, 1], 0, height: 260);
+      expect(spec.overflows, isTrue);
+      expect(spec.peek, greaterThanOrEqualTo(StackStyle.headerHeight - 0.01));
+      expect(spec.heightOf(0), closeTo(spec.cardHeight + 3 * rowHeight, 0.01));
+    });
+
+    test('an out-of-range or short rows list falls back to one row', () {
+      // The deck and the rows list are assembled separately, so a mismatch is a
+      // wrong layout rather than a crash — it has to default, not throw.
+      final spec = solveStack(
+        height: tallBox,
+        cardCount: 4,
+        focusedIndex: 0,
+        rows: const [2],
+      );
+      expect(spec.rowsOf(0), 2);
+      expect(spec.rowsOf(3), 1);
+      expect(spec.rowsOf(9), 1);
+      expect(spec.rowsOf(-1), 1);
+      expect(spec.heightOf(3), closeTo(spec.cardHeight, 0.01));
+    });
+
+    test('no rows list at all is the deck exactly as it was', () {
+      final withOut = solveStack(
+          height: tallBox, cardCount: 6, focusedIndex: 2);
+      final withOnes = specFor([1, 1, 1, 1, 1, 1], 2);
+      expect(withOut.totalHeight, closeTo(withOnes.totalHeight, 0.01));
+      for (var i = 0; i < 6; i++) {
+        expect(withOut.topOf(i), closeTo(withOnes.topOf(i), 0.01),
+            reason: 'card $i');
+      }
+    });
+  });
 }
