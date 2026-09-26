@@ -372,15 +372,19 @@ class _HomeScreenState extends State<HomeScreen>
             height: constraints.maxHeight,
             cardCount: _deck.length,
             focusedIndex: _focused,
-            rows: [for (final card in _deck.cards) card.appRows],
+            rows: _rowCounts(),
           );
           // Kept so the knob can scroll a long deck to the card it just
           // selected; a plain field, not setState, since this is build.
           _lastSpec = spec;
 
-          final reveal = spec.totalHeight.clamp(0.0, constraints.maxHeight);
-          final below =
-              (constraints.maxHeight - spec.originY - reveal).clamp(0.0, double.infinity);
+          // Measured against the rail's own band, not the revealed deck. The
+          // deck's height moves with the open card's row count, and sizing the
+          // track to it fed focus changes back into the mapping that produced
+          // them — see StackSpec.railHeight.
+          final reveal = spec.railHeight.clamp(0.0, constraints.maxHeight);
+          final below = (constraints.maxHeight - spec.railTop - reveal)
+              .clamp(0.0, double.infinity);
 
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -390,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // The rail is exactly as tall as the cards and sits with them,
                 // so a centred deck reads as one centred thing rather than a
                 // block of cards beside a full-height track.
-                padding: EdgeInsets.only(top: spec.originY, bottom: below),
+                padding: EdgeInsets.only(top: spec.railTop, bottom: below),
                 child: _rail(),
               ),
             ],
@@ -411,6 +415,10 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+
+  /// Rows per card, parallel to the deck. One place, so the layout the rail
+  /// scrolls to is solved from the same numbers the deck is drawn with.
+  List<int> _rowCounts() => [for (final card in _deck.cards) card.appRows];
 
   Widget _restingStack(StackSpec spec) {
     final stack = SizedBox(
@@ -489,10 +497,25 @@ class _HomeScreenState extends State<HomeScreen>
   void _focus(int index) {
     setState(() => _focused = index);
     if (!_scroll.hasClients) return;
-    final spec = _lastSpec;
-    if (spec == null || !spec.overflows) return;
-    final target = (spec.revealTopOf(index) - spec.peek)
-        .clamp(0.0, _scroll.position.maxScrollExtent);
+    final previous = _lastSpec;
+    if (previous == null) return;
+
+    // Solved for the card being focused, not read off the last frame's spec.
+    // A card's height depends on its rows, so moving focus changes the layout —
+    // and asking the outgoing layout where the incoming card sits scrolled to
+    // where it used to be. The extent comes from the same new layout rather than
+    // from the controller, whose maxScrollExtent is still the old one until this
+    // rebuild lands.
+    final spec = solveStack(
+      height: previous.boxHeight,
+      cardCount: _deck.length,
+      focusedIndex: index,
+      rows: _rowCounts(),
+    );
+    if (!spec.overflows) return;
+    final extent =
+        (spec.totalHeight - spec.boxHeight).clamp(0.0, double.infinity);
+    final target = (spec.revealTopOf(index) - spec.peek).clamp(0.0, extent);
     _scroll.animateTo(
       target,
       duration: const Duration(milliseconds: 220),

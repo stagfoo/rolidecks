@@ -59,6 +59,26 @@ class StackSpec {
 
   bool get overflows => totalHeight > boxHeight + 0.01;
 
+  /// The deck's height as if the open card were a single row, and where that
+  /// band sits — what the side rail is measured against.
+  ///
+  /// Deliberately *not* [totalHeight]/[originY]. Those move when focus moves to
+  /// a card with more rows, and the rail maps a finger position onto a card
+  /// index through its own height: a track that resized as focus changed
+  /// remapped the same finger position onto a different card on the very next
+  /// drag update, so focus could bounce between two cards and the rail stopped
+  /// snapping. The mapping has to be a fixed function of the deck, not of which
+  /// card happens to be open.
+  ///
+  /// With every card a single row these are exactly [totalHeight] and
+  /// [originY], so a deck that has never been given extra rows looks and
+  /// behaves as it always did.
+  double get railHeight =>
+      cardCount <= 0 ? 0 : cardHeight + (cardCount - 1) * peek;
+
+  double get railTop =>
+      railHeight >= boxHeight ? 0.0 : (boxHeight - railHeight) * deckAlignment;
+
   /// Total revealed height. The focused card is seen whole, everything else
   /// contributes its strip.
   ///

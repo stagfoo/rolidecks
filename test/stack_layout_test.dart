@@ -507,4 +507,90 @@ void main() {
       }
     });
   });
+
+  group('the rail band', () {
+    const tallBox = 700.0;
+    const rowHeight = StackStyle.defaultRowHeight;
+
+    test('does not move when focus moves to a card with more rows', () {
+      // The bug this exists for: the rail maps a finger position onto a card
+      // index through its own height, so a track that resized as focus changed
+      // remapped the same finger onto a different card on the next drag update
+      // and focus bounced between two cards.
+      const rows = [1, 2, 4, 1, 3];
+      final reference = solveStack(
+        height: tallBox,
+        cardCount: rows.length,
+        focusedIndex: 0,
+        rows: rows,
+      );
+      for (var focus = 0; focus < rows.length; focus++) {
+        final spec = solveStack(
+          height: tallBox,
+          cardCount: rows.length,
+          focusedIndex: focus,
+          rows: rows,
+        );
+        expect(spec.railHeight, closeTo(reference.railHeight, 0.01),
+            reason: 'focus $focus');
+        expect(spec.railTop, closeTo(reference.railTop, 0.01),
+            reason: 'focus $focus');
+      }
+    });
+
+    test('is unaffected by the row counts themselves', () {
+      final plain = solveStack(
+          height: tallBox, cardCount: 5, focusedIndex: 2, rows: const [1, 1, 1, 1, 1]);
+      final tall = solveStack(
+          height: tallBox, cardCount: 5, focusedIndex: 2, rows: const [4, 4, 4, 4, 4]);
+      expect(tall.railHeight, closeTo(plain.railHeight, 0.01));
+      expect(tall.railTop, closeTo(plain.railTop, 0.01));
+    });
+
+    test('is the revealed deck exactly, for a deck of single rows', () {
+      // So a deck nobody has given extra rows looks exactly as it did.
+      for (final count in [1, 3, 6]) {
+        for (var focus = 0; focus < count; focus++) {
+          final spec = solveStack(
+              height: tallBox, cardCount: count, focusedIndex: focus);
+          expect(spec.railHeight, closeTo(spec.totalHeight, 0.01),
+              reason: '$count cards, focus $focus');
+          expect(spec.railTop, closeTo(spec.originY, 0.01),
+              reason: '$count cards, focus $focus');
+        }
+      }
+    });
+
+    test('hangs from the top and stays stable once the deck overflows', () {
+      // A crowded deck drives both floors and the band exceeds the box, exactly
+      // as totalHeight does — the rail widget clamps it. What still has to hold
+      // is that it does not move as focus does, which is the whole point.
+      const rows = [4, 1, 2, 1, 3, 1];
+      final first = solveStack(
+          height: 260, cardCount: rows.length, focusedIndex: 0, rows: rows);
+      expect(first.overflows, isTrue);
+      expect(first.railTop, 0);
+      for (var focus = 0; focus < rows.length; focus++) {
+        final spec = solveStack(
+            height: 260, cardCount: rows.length, focusedIndex: focus, rows: rows);
+        expect(spec.railTop, 0, reason: 'focus $focus');
+        expect(spec.railHeight, closeTo(first.railHeight, 0.01),
+            reason: 'focus $focus');
+      }
+    });
+
+    test('an empty deck has no band and does not divide by zero', () {
+      final spec = solveStack(height: tallBox, cardCount: 0, focusedIndex: 0);
+      expect(spec.railHeight, 0);
+    });
+
+    test('the open card can still make the deck taller than the band', () {
+      // The band is stable, not a claim that the deck never grows — a four-row
+      // card genuinely extends past it, which is what pushes the cards below
+      // down.
+      final spec = solveStack(
+          height: tallBox, cardCount: 4, focusedIndex: 1, rows: const [1, 4, 1, 1]);
+      expect(spec.totalHeight - spec.railHeight, closeTo(3 * rowHeight, 0.01));
+    });
+  });
 }
