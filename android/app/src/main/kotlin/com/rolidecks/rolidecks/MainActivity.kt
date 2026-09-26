@@ -3,6 +3,7 @@ package com.rolidecks.rolidecks
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.LauncherApps
@@ -34,6 +35,7 @@ import org.json.JSONObject
 import android.util.Base64
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URISyntaxException
 import java.util.concurrent.Executors
 
 /**
@@ -155,6 +157,9 @@ class MainActivity : FlutterActivity() {
 
     private val pendingKey = "pending"
     private val outcomeKey = "lastOutcome"
+
+    /** Why the last shortcut *launch* ended the way it did. */
+    private val launchOutcomeKey = "lastLaunch"
     private var channel: MethodChannel? = null
     private var packageEvents: EventChannel.EventSink? = null
     private var packageReceiver: BroadcastReceiver? = null
@@ -454,12 +459,20 @@ class MainActivity : FlutterActivity() {
             "profiles" to shortcutProfiles().size,
             // What happened the last time a shortcut was attempted, kept so a
             // failure can be read off the device rather than guessed at.
-            "lastOutcome" to (shortcutPrefs.getString(outcomeKey, "none") ?: "none")
+            "lastOutcome" to (shortcutPrefs.getString(outcomeKey, "none") ?: "none"),
+            // And what happened the last time one was *tapped*. Creating a
+            // shortcut and launching it fail for unrelated reasons, so one
+            // field could not report both.
+            "lastLaunch" to (shortcutPrefs.getString(launchOutcomeKey, "none") ?: "none")
         )
     }
 
     private fun noteOutcome(outcome: String) {
         shortcutPrefs.edit().putString(outcomeKey, outcome).apply()
+    }
+
+    private fun noteLaunchOutcome(outcome: String) {
+        shortcutPrefs.edit().putString(launchOutcomeKey, outcome).apply()
     }
 
     /** Hands over everything recorded since the last ask, and forgets it. */
@@ -629,20 +642,59 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    /** Launches a shortcut the system does not know about, stored as a URI. */
+    /** Launches a shortcut the system does not know about, stored as a URI.
+     *
+     * Each failure is written down rather than collapsed into a bare `false`.
+     * A tile that does nothing when tapped is indistinguishable from a tile
+     * that launched something invisible, and the reason — a URI that no longer
+     * parses, a target activity that is not exported, an app that has since
+     * been uninstalled — is only knowable here, at the throw.
+     */
     private fun launchIntentUri(uri: String): Boolean {
+        val intent = try {
+            Intent.parseUri(uri, Intent.URI_INTENT_SCHEME)
+        } catch (e: URISyntaxException) {
+            noteLaunchOutcome("legacy: stored URI no longer parses (${e.javaClass.simpleName})")
+            return false
+        }
         return try {
-            startActivity(
-                Intent.parseUri(uri, Intent.URI_INTENT_SCHEME)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            noteLaunchOutcome("legacy: launched ${intent.component?.flattenToShortString() ?: intent.action ?: "intent"}")
             true
+        } catch (e: ActivityNotFoundException) {
+            // The usual one: the app that made the shortcut is gone, or the
+            // activity it named has been renamed out from under the stored URI.
+            noteLaunchOutcome("legacy: nothing resolves ${intent.component?.flattenToShortString() ?: intent.action ?: "intent"}")
+            false
+        } catch (e: SecurityException) {
+            // Android 12+ refuses an outside start of a non-exported activity,
+            // which is how a shortcut that used to work stops working after the
+            // owning app targets a newer SDK.
+            noteLaunchOutcome("legacy: not allowed to start ${intent.component?.flattenToShortString() ?: "it"} (${e.message})")
+            false
         } catch (e: Exception) {
+            noteLaunchOutcome("legacy: ${e.javaClass.simpleName} ${e.message}")
             false
         }
     }
 
     private fun launchShortcut(packageName: String, shortcutId: String): Boolean {
+        // startShortcut is host-only, and throws SecurityException when this
+        // app is not the default launcher. Checked first so that case reports
+        // itself as the one thing the user can actually act on, rather than as
+        // an anonymous failure alongside genuinely broken shortcuts.
+        val host = try {
+            launcherApps.hasShortcutHostPermission()
+        } catch (e: Throwable) {
+            false
+        }
+        if (!host) {
+            noteLaunchOutcome(
+                "pinned $packageName/$shortcutId: not the shortcut host — " +
+                    "pinned shortcuts only launch while Rolidecks is the default launcher"
+            )
+            return false
+        }
         return try {
             launcherApps.startShortcut(
                 packageName,
@@ -651,10 +703,14 @@ class MainActivity : FlutterActivity() {
                 null,
                 userForShortcut(packageName, shortcutId)
             )
+            noteLaunchOutcome("pinned $packageName/$shortcutId: launched")
             true
         } catch (e: Exception) {
             // The shortcut may have been disabled or its app uninstalled since
             // the list was taken.
+            noteLaunchOutcome(
+                "pinned $packageName/$shortcutId: ${e.javaClass.simpleName} ${e.message}"
+            )
             false
         }
     }

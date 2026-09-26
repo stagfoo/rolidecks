@@ -229,6 +229,20 @@ class _HomeScreenState extends State<HomeScreen>
     return merged.values.toList();
   }
 
+  /// Opens [app], and says so when it does not open.
+  ///
+  /// The bool that `open` returns used to be dropped at the call site, so a
+  /// shortcut whose target had been uninstalled, renamed, or locked behind
+  /// Android 12's non-exported-activity rule was indistinguishable from a tap
+  /// that had not registered: the tile dimmed and nothing else happened. The
+  /// Android side writes the reason down under `lastLaunch`, so the toast can
+  /// point at Diagnostics, where the actual cause is spelled out.
+  Future<void> _launch(LaunchableApp app) async {
+    final opened = await LauncherBridge.instance.open(app);
+    if (opened || !mounted) return;
+    _toast('${app.label} did not open — see Diagnostics for why');
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -429,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ? _openCard(_deck[i])
                     : setState(() => _focused = i),
                 onLongPress: _openEditDeck,
-                onAppTap: LauncherBridge.instance.open,
+                onAppTap: _launch,
                 onAppLongPress: (app) => _showAppMenu(_deck[i], app),
               ),
             ),
@@ -496,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
-    if (chosen != null) await LauncherBridge.instance.open(chosen);
+    if (chosen != null) await _launch(chosen);
   }
 
   /// Filing an app straight from the card it is sitting on, so the common case
