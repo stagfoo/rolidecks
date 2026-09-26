@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The window shown while the process starts, before Flutter's first frame.
-     Painted the same colour as the deck's background so a cold start looks
-     like the launcher appearing rather than a white flash. -->
+     This is the variant that applies on every device the app will ever run on
+     (minSdk is far above 21); the one in drawable/ is the fallback nothing
+     reaches. Both say the same thing so neither can drift into being the odd
+     one out.
+
+     Transparent rather than a colour, so the wallpaper LaunchTheme asks for is
+     what shows during startup. A colour here would cover it, and the launcher
+     would open on a flat rectangle that turns into the wallpaper a moment
+     later — the cold start looking like the launcher waking up, which is the
+     thing this file was added to avoid in the first place. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/deck_ground" />
+    <item android:drawable="@android:color/transparent" />
 </layer-list>

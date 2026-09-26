@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
+    <!-- Theme applied to the Android Window while the process is starting.
+
+         Wallpaper here as well as in NormalTheme, not just there: this is the
+         window a cold start actually shows, so without it the launcher opens on
+         a black rectangle and the wallpaper snaps in when Flutter's first frame
+         lands. Showing it from the first window instead means the wallpaper is
+         already there and the deck simply appears on top of it. -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowShowWallpaper">true</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your
@@ -13,6 +18,15 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@color/deck_ground</item>
+        <!-- Transparent, not deck_ground: the window background is what sits
+             between the wallpaper and Flutter's surface, so any colour here
+             hides the wallpaper completely no matter what the two layers either
+             side of it do. -->
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- Asks the window manager to draw the wallpaper behind this window.
+             Without it a transparent window shows black, not wallpaper — the
+             wallpaper is a separate layer that is only composited in for
+             windows that opt in. -->
+        <item name="android:windowShowWallpaper">true</item>
     </style>
 </resources>

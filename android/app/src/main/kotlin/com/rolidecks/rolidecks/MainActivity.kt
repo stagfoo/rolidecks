@@ -26,6 +26,7 @@ import android.os.UserHandle
 import android.provider.Settings
 import android.util.DisplayMetrics
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -48,6 +49,19 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val methodChannelName = "rolidecks/launcher"
     private val eventChannelName = "rolidecks/packages"
+
+    /**
+     * Renders onto a transparent surface, so the system wallpaper shows through.
+     *
+     * This is the layer that actually decides it. The theme can ask for the
+     * wallpaper and the Scaffold can be transparent, and the deck will still sit
+     * on black, because Flutter defaults to an opaque SurfaceView that composites
+     * over everything behind it regardless. Transparent mode swaps that for a
+     * TextureView with an alpha channel — slightly more expensive to composite,
+     * which is the reason it is not the default, and unnoticeable for a launcher
+     * that is static between taps.
+     */
+    override fun getBackgroundMode(): BackgroundMode = BackgroundMode.transparent
 
     // The package list is one big job; icons are a hundred small ones. On a
     // single thread every icon queues behind every other icon and behind the

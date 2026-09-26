@@ -11,6 +11,18 @@ import 'icon_catalogue.dart';
 
 class DeckColors {
   static const ground = Color(0xFF08080A);
+
+  /// What the home screen puts over the wallpaper, in place of [ground].
+  ///
+  /// Not fully transparent. App titles are near-white and the card labels are
+  /// thin, and a bright or busy wallpaper leaves both unreadable — so the deck
+  /// keeps its own ground colour and only thins it, which dims the wallpaper
+  /// enough to read against while still plainly being the wallpaper. Only the
+  /// home screen uses it: the full-screen editors stay on opaque [ground],
+  /// where wallpaper behind a list of settings is just harder to read.
+  ///
+  /// The alpha is the whole of the effect and is meant to be adjusted by eye.
+  static const wallpaperScrim = Color(0x5908080A);
   static const strip = Color(0xFF101014);
   static const surface = Color(0xFF1A1A1F);
   static const surfaceEdge = Color(0xFF2A2A32);

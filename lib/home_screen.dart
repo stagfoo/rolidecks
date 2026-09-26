@@ -304,7 +304,12 @@ class _HomeScreenState extends State<HomeScreen>
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: DeckColors.ground,
+        // Translucent, so the system wallpaper shows through. Three other
+        // layers have to agree for this to be visible at all — the window
+        // background and windowShowWallpaper in styles.xml, and Flutter's
+        // transparent BackgroundMode in MainActivity — and an opaque colour at
+        // any one of them puts the black back.
+        backgroundColor: DeckColors.wallpaperScrim,
         body: SafeArea(
           child: _loading
               ? const Center(
