@@ -706,14 +706,90 @@ class MainActivity : FlutterActivity() {
             noteLaunchOutcome("pinned $packageName/$shortcutId: launched")
             true
         } catch (e: Exception) {
-            // The shortcut may have been disabled or its app uninstalled since
-            // the list was taken.
+            // "Shortcut could not be started" is all startShortcut ever says,
+            // for every reason it can refuse — disabled by its app, unpublished
+            // since it was pinned, or restored from another phone's backup and
+            // never startable here. The reason is knowable, but only by asking
+            // separately, so the probe runs on failure and the answer lands in
+            // the same field the launcher already reports.
             noteLaunchOutcome(
-                "pinned $packageName/$shortcutId: ${e.javaClass.simpleName} ${e.message}"
+                "pinned $packageName/$shortcutId: ${e.javaClass.simpleName} ${e.message}" +
+                    " — ${probeShortcut(packageName, shortcutId)}"
             )
             false
         }
     }
+
+    /**
+     * Why a pinned shortcut would not start, in one line.
+     *
+     * Every branch is a different fix — reinstall the app, re-add the shortcut
+     * from the app that owns it, or accept it can never work on this phone —
+     * and they are indistinguishable from the exception alone.
+     */
+    private fun probeShortcut(packageName: String, shortcutId: String): String {
+        val installed = try {
+            val info = packageManager.getApplicationInfo(packageName, 0)
+            if (info.enabled) "installed" else "installed but disabled"
+        } catch (e: PackageManager.NameNotFoundException) {
+            return "$packageName is not installed — the shortcut cannot work until it is back"
+        }
+
+        // Every flag, not just PINNED: a shortcut its app has stopped
+        // publishing stays pinned, and one that is only still visible as
+        // "cached" says something different again about why it will not start.
+        val query = LauncherApps.ShortcutQuery()
+            .setQueryFlags(
+                LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED or
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or
+                    LauncherApps.ShortcutQuery.FLAG_GET_KEY_FIELDS_ONLY
+            )
+            .setPackage(packageName)
+            .setShortcutIds(listOf(shortcutId))
+
+        val found = try {
+            shortcutProfiles().firstNotNullOfOrNull { profile ->
+                perProfile(profile) { launcherApps.getShortcuts(query, it) }
+                    ?.firstOrNull()
+            }
+        } catch (e: Exception) {
+            return "$installed; could not be queried (${e.javaClass.simpleName})"
+        }
+
+        if (found == null) {
+            return "$installed, but it no longer publishes this shortcut — " +
+                "re-add it from the app, then remove the old tile"
+        }
+        if (found.isEnabled) {
+            return "$installed and the shortcut is enabled, so the refusal is " +
+                "the target activity, not the shortcut " +
+                "(activity=${found.activity?.flattenToShortString() ?: "none"})"
+        }
+        return "$installed, shortcut disabled: ${disabledReasonText(found)}" +
+            (found.disabledMessage?.let { " (\"$it\")" } ?: "")
+    }
+
+    /** The disabled reason as something readable, not an int. */
+    private fun disabledReasonText(shortcut: ShortcutInfo): String =
+        when (shortcut.disabledReason) {
+            ShortcutInfo.DISABLED_REASON_NOT_DISABLED -> "not disabled"
+            ShortcutInfo.DISABLED_REASON_BY_APP ->
+                "turned off by the app that made it — re-add it from that app"
+            ShortcutInfo.DISABLED_REASON_APP_CHANGED ->
+                "the app changed under it (an update moved what it pointed at) — re-add it"
+            ShortcutInfo.DISABLED_REASON_VERSION_LOWER ->
+                "restored onto an older version of the app than made it — " +
+                    "update the app, then re-add it"
+            ShortcutInfo.DISABLED_REASON_BACKUP_NOT_SUPPORTED ->
+                "came from another phone's backup and cannot be restored — " +
+                    "it has to be made again on this phone"
+            ShortcutInfo.DISABLED_REASON_SIGNATURE_MISMATCH ->
+                "restored from a differently-signed build of the app — re-add it"
+            ShortcutInfo.DISABLED_REASON_OTHER_RESTORE_ISSUE ->
+                "did not survive a restore — re-add it"
+            else -> "reason ${shortcut.disabledReason}"
+        }
 
     private fun userForShortcut(packageName: String, shortcutId: String): UserHandle {
         val query = LauncherApps.ShortcutQuery()
