@@ -6,6 +6,7 @@ import 'card_deck.dart';
 import 'card_row.dart';
 import 'models.dart';
 import 'stack_layout.dart';
+import 'widget_card_view.dart';
 import 'theme.dart';
 
 /// One card in the stack.
@@ -37,6 +38,7 @@ class DeckCardView extends StatelessWidget {
     this.topBleed = 0,
     this.imagePath,
     this.imageOffset = 0,
+    this.onPickWidget,
   });
 
   final DeckCard card;
@@ -73,6 +75,10 @@ class DeckCardView extends StatelessWidget {
 
   /// Where that picture sits vertically, -1 (top) to 1 (bottom).
   final double imageOffset;
+
+  /// Opens the widget picker, for a widget card with nothing on it yet. Null
+  /// where the card is not editable from — a preview, or arrange mode.
+  final VoidCallback? onPickWidget;
 
   /// Extra height added above the card, hidden behind the card in front.
   ///
@@ -228,6 +234,16 @@ class DeckCardView extends StatelessWidget {
   }
 
   Widget _body(Color color, Color onCard) {
+    // Before the apps: a widget card holds a widget instead of apps, and an
+    // unbound one has its own empty state rather than the "hold to fill" that
+    // tells you to add apps to it.
+    if (card.isWidget) {
+      return WidgetCardBody(
+        widgetId: card.widgetId,
+        onCard: onCard,
+        onPick: onPickWidget,
+      );
+    }
     if (apps.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),

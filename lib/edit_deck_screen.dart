@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_icon.dart';
 import 'app_picker_screen.dart';
 import 'card_deck.dart';
+import 'launcher_bridge.dart';
 import 'card_editor_sheet.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -186,11 +187,31 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                   children: [
-                    for (final app in apps) ...[
-                      _AppChip(app: app, onCard: onCard, onTap: () => _unfile(app)),
-                      const SizedBox(width: 8),
+                    // A widget card holds a widget, so there is nothing to
+                    // chip and nothing to add: offering an add button would file
+                    // apps onto a card that does not draw them.
+                    if (card.isWidget)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          card.hasWidget
+                              ? 'a widget · three rows'
+                              : 'a widget · none chosen yet',
+                          style: TextStyle(
+                            color: onCard.withValues(alpha: 0.7),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      for (final app in apps) ...[
+                        _AppChip(
+                            app: app, onCard: onCard, onTap: () => _unfile(app)),
+                        const SizedBox(width: 8),
+                      ],
+                      _AddChip(onCard: onCard, onTap: () => _addApps(card)),
                     ],
-                    _AddChip(onCard: onCard, onTap: () => _addApps(card)),
                   ],
                 ),
               ),
@@ -269,6 +290,13 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
       apps: card.resolve(widget.installed),
     );
     if (result == null) return;
+    // The card's widget goes back to the system with the card. Nothing else
+    // releases one, and an id left allocated keeps its app updating a widget that
+    // is on no card.
+    final widgetId = card.widgetId;
+    if (result.deleted && widgetId != null) {
+      await LauncherBridge.instance.releaseWidget(widgetId);
+    }
     _update(
       result.deleted
           ? _deck.removeCard(card.id)

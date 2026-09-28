@@ -395,4 +395,115 @@ void main() {
       expect(card(appRows: 3).copyWith(name: 'Renamed').appRows, 3);
     });
   });
+
+  group('widget cards', () {
+    DeckCard base({bool isWidget = false, int? widgetId, int appRows = 1}) =>
+        DeckCard(
+          id: 'c1',
+          name: 'Card',
+          colorKey: cardPalette.first.key,
+          iconKey: 'star',
+          // The card stores package/activity ids, which is what idOf builds —
+          // a bare package name would simply never resolve.
+          appIds: [idOf('com.a')],
+          isWidget: isWidget,
+          widgetId: widgetId,
+          appRows: appRows,
+        );
+
+    test('an ordinary card is not one', () {
+      expect(base().isWidget, isFalse);
+      expect(base().hasWidget, isFalse);
+      expect(base().widgetId, isNull);
+    });
+
+    test('is three rows tall whatever appRows says', () {
+      // Derived, so the layout, the preview and the card cannot disagree.
+      expect(base(isWidget: true, appRows: 1).rows, widgetCardRows);
+      expect(base(isWidget: true, appRows: 4).rows, widgetCardRows);
+      // And an ordinary card is still its own row count.
+      expect(base(appRows: 2).rows, 2);
+    });
+
+    test('is a widget card before it has a widget', () {
+      // Making the card and choosing what goes on it are two steps, and the
+      // state in between has to be drawable.
+      final waiting = base(isWidget: true);
+      expect(waiting.isWidget, isTrue);
+      expect(waiting.hasWidget, isFalse);
+      expect(waiting.rows, widgetCardRows);
+    });
+
+    test('shows no apps, but does not throw its apps away', () {
+      // Switching kind is easy to do by accident and a card of filed apps is
+      // tedious to rebuild, so the list is kept and simply not drawn.
+      final widget = base(isWidget: true);
+      expect(widget.resolve([app('com.a')]), isEmpty);
+      expect(widget.appIds, [idOf('com.a')]);
+      // Switched back, the apps are there again.
+      expect(
+        widget.copyWith(isWidget: false).resolve([app('com.a')]),
+        hasLength(1),
+      );
+    });
+
+    test('round-trips through json', () {
+      final json = base(isWidget: true, widgetId: 42).toJson();
+      expect(json['isWidget'], isTrue);
+      expect(json['widgetId'], 42);
+      final back = DeckCard.fromJson(json);
+      expect(back.isWidget, isTrue);
+      expect(back.widgetId, 42);
+      expect(back.hasWidget, isTrue);
+      expect(back.rows, widgetCardRows);
+    });
+
+    test('is left out of the json when it is not one', () {
+      final json = base().toJson();
+      expect(json.containsKey('isWidget'), isFalse);
+      expect(json.containsKey('widgetId'), isFalse);
+      expect(DeckCard.fromJson(json).isWidget, isFalse);
+    });
+
+    test('a widget card declared with no id round-trips as one', () {
+      final json = base(isWidget: true).toJson();
+      expect(json['isWidget'], isTrue);
+      expect(json.containsKey('widgetId'), isFalse);
+      final back = DeckCard.fromJson(json);
+      expect(back.isWidget, isTrue);
+      expect(back.hasWidget, isFalse);
+    });
+
+    test('copyWith can unbind, which passing null cannot', () {
+      // null through a copyWith is indistinguishable from "leave it alone", so
+      // clearing needs to be asked for outright.
+      final bound = base(isWidget: true, widgetId: 7);
+      expect(bound.copyWith(widgetId: null).widgetId, 7);
+      expect(bound.copyWith(clearWidgetId: true).widgetId, isNull);
+      expect(bound.copyWith(clearWidgetId: true).hasWidget, isFalse);
+    });
+
+    test('many cards can each hold their own widget', () {
+      final deck = CardDeck.normalised([
+        base(isWidget: true, widgetId: 1),
+        base(isWidget: true, widgetId: 2).copyWith(name: 'Second'),
+        base(),
+      ]);
+      final ids = [
+        for (final card in deck.cards)
+          if (card.widgetId case final id?) id,
+      ];
+      expect(ids, [1, 2]);
+    });
+
+    test('the all-apps card is never a widget card', () {
+      expect(CardDeck.allAppsCard.isWidget, isFalse);
+      // And it stays itself if something tries.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(isWidget: true),
+      );
+      expect(deck.cards.last.isAllApps, isTrue);
+    });
+  });
 }

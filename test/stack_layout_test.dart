@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rolidecks/card_deck.dart';
 import 'package:rolidecks/stack_layout.dart';
 
 void main() {
@@ -591,6 +592,93 @@ void main() {
       final spec = solveStack(
           height: tallBox, cardCount: 4, focusedIndex: 1, rows: const [1, 4, 1, 1]);
       expect(spec.totalHeight - spec.railHeight, closeTo(3 * rowHeight, 0.01));
+    });
+  });
+
+  group('widget cards in the stack', () {
+    const tallBox = 700.0;
+
+    test('a widget card is laid out at three rows', () {
+      // The deck is handed card.rows, so a widget card arrives as three whatever
+      // its appRows holds — this is the layout end of that.
+      final spec = solveStack(
+        height: tallBox,
+        cardCount: 3,
+        focusedIndex: 1,
+        rows: const [1, widgetCardRows, 1],
+      );
+      expect(
+        spec.heightOf(1),
+        closeTo(
+          spec.cardHeight + (widgetCardRows - 1) * spec.rowHeight,
+          0.01,
+        ),
+      );
+    });
+
+    test('several widget cards can sit in one deck', () {
+      // Many widget cards is the point: each is three rows, and only the open one
+      // takes that room.
+      const rows = [widgetCardRows, 1, widgetCardRows, widgetCardRows];
+      final closedOnOne = solveStack(
+          height: tallBox, cardCount: 4, focusedIndex: 1, rows: rows);
+      for (final focus in [0, 2, 3]) {
+        final spec = solveStack(
+            height: tallBox, cardCount: 4, focusedIndex: focus, rows: rows);
+        // Each widget card opens to the same height as the others.
+        expect(
+          spec.totalHeight - closedOnOne.totalHeight,
+          closeTo((widgetCardRows - 1) * spec.rowHeight, 0.01),
+          reason: 'focus $focus',
+        );
+        // And the strips either side still land a peek apart.
+        for (var i = 1; i < spec.cardCount; i++) {
+          final gap = spec.revealTopOf(i) - spec.revealTopOf(i - 1);
+          expect(
+            gap,
+            closeTo(i == focus + 1 ? spec.heightOf(focus) : spec.peek, 0.01),
+            reason: 'focus $focus, card $i',
+          );
+        }
+      }
+    });
+
+    test('a deck of nothing but widget cards still holds together', () {
+      const rows = [
+        widgetCardRows,
+        widgetCardRows,
+        widgetCardRows,
+        widgetCardRows,
+      ];
+      for (var focus = 0; focus < 4; focus++) {
+        final spec = solveStack(
+            height: tallBox, cardCount: 4, focusedIndex: focus, rows: rows);
+        expect(spec.revealTopOf(0), closeTo(spec.originY, 0.01),
+            reason: 'focus $focus');
+        for (var i = 0; i < focus; i++) {
+          expect(
+            spec.topOf(i) + spec.heightOf(i),
+            lessThanOrEqualTo(spec.topOf(focus) + 0.01),
+            reason: 'focus $focus, card $i',
+          );
+        }
+      }
+    });
+
+    test('the rail band is unmoved by widget cards', () {
+      // The same guarantee as for extra rows: the rail maps a finger onto a card
+      // index through its own height, so it cannot depend on which card is open.
+      const rows = [widgetCardRows, 1, widgetCardRows, 2];
+      final reference = solveStack(
+          height: tallBox, cardCount: 4, focusedIndex: 0, rows: rows);
+      for (var focus = 0; focus < 4; focus++) {
+        final spec = solveStack(
+            height: tallBox, cardCount: 4, focusedIndex: focus, rows: rows);
+        expect(spec.railHeight, closeTo(reference.railHeight, 0.01),
+            reason: 'focus $focus');
+        expect(spec.railTop, closeTo(reference.railTop, 0.01),
+            reason: 'focus $focus');
+      }
     });
   });
 }

@@ -279,6 +279,51 @@ class LauncherBridge {
     };
   }
 
+  /// Every app widget installed on the phone.
+  Future<List<WidgetProvider>> listWidgetProviders() async {
+    final raw = await _channel
+            .invokeListMethod<Object?>('listWidgetProviders') ??
+        const [];
+    final providers = [
+      for (final entry in raw.whereType<Map<Object?, Object?>>())
+        WidgetProvider.fromPlatform(entry),
+    ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return providers;
+  }
+
+  /// Allocates and binds a widget for [provider], running its setup if it has
+  /// one. The user may be asked to permit it, so this can take as long as they
+  /// take.
+  Future<WidgetBinding> bindWidget(String provider) async {
+    final map = await _channel.invokeMapMethod<Object?, Object?>(
+      'bindWidget',
+      {'provider': provider},
+    );
+    return WidgetBinding.fromPlatform(map ?? const {});
+  }
+
+  /// What is bound to [widgetId] now, or null when nothing is — the widget's app
+  /// was uninstalled, or its data cleared.
+  Future<WidgetProvider?> widgetInfo(int widgetId) async {
+    final map = await _channel.invokeMapMethod<Object?, Object?>(
+      'widgetInfo',
+      {'widgetId': widgetId},
+    );
+    if (map == null) return null;
+    return WidgetProvider.fromPlatform(map);
+  }
+
+  /// Gives a widget id back to the system. Nothing else frees one.
+  Future<void> releaseWidget(int widgetId) =>
+      _channel.invokeMethod<void>('releaseWidget', {'widgetId': widgetId});
+
+  /// Releases every widget this launcher holds that is not in [keep].
+  ///
+  /// Ids outlive the cards that referenced them, and one nobody releases keeps
+  /// its app doing update work for a widget on no screen at all.
+  Future<void> reapWidgets(List<int> keep) =>
+      _channel.invokeMethod<void>('reapWidgets', {'keep': keep});
+
   Future<ScreenMetrics> screenMetrics() async {
     final map = await _channel.invokeMapMethod<Object?, Object?>('screenMetrics');
     return ScreenMetrics.fromPlatform(map ?? const {});

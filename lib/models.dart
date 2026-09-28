@@ -152,3 +152,63 @@ class ScreenMetrics {
   String toString() =>
       '${widthPx}x$heightPx @${density}x (${widthDp.round()}x${heightDp.round()} dp)';
 }
+
+/// An app widget the phone has installed, as offered by the picker.
+class WidgetProvider {
+  const WidgetProvider({
+    required this.provider,
+    required this.packageName,
+    required this.label,
+    this.minWidth = 0,
+    this.minHeight = 0,
+    this.resizable = true,
+    this.needsConfigure = false,
+  });
+
+  /// The flattened ComponentName. This is the widget's identity to the system
+  /// and the only thing [LauncherBridge.bindWidget] needs.
+  final String provider;
+
+  final String packageName;
+  final String label;
+
+  /// The size the widget asks for, in dp. Advisory: a resizable widget will lay
+  /// itself out smaller, and the picker uses these only to say when a widget is
+  /// being put somewhere it will be cramped.
+  final int minWidth;
+  final int minHeight;
+
+  final bool resizable;
+
+  /// Whether the widget runs its own setup screen before it can draw anything.
+  final bool needsConfigure;
+
+  static WidgetProvider fromPlatform(Map<Object?, Object?> map) => WidgetProvider(
+        provider: (map['provider'] as String?) ?? '',
+        packageName: (map['packageName'] as String?) ?? '',
+        label: (map['label'] as String?) ?? 'Widget',
+        minWidth: (map['minWidth'] as num?)?.toInt() ?? 0,
+        minHeight: (map['minHeight'] as num?)?.toInt() ?? 0,
+        resizable: map['resizable'] as bool? ?? true,
+        needsConfigure: map['needsConfigure'] as bool? ?? false,
+      );
+}
+
+/// The outcome of trying to put a widget on a card.
+///
+/// A failure here is nearly always the user declining something rather than
+/// anything being broken — permission to add widgets, or the widget's own setup
+/// screen — so it carries a reason worth showing rather than just a false.
+class WidgetBinding {
+  const WidgetBinding({required this.ok, this.widgetId, this.reason});
+
+  final bool ok;
+  final int? widgetId;
+  final String? reason;
+
+  static WidgetBinding fromPlatform(Map<Object?, Object?> map) => WidgetBinding(
+        ok: map['ok'] as bool? ?? false,
+        widgetId: (map['widgetId'] as num?)?.toInt(),
+        reason: map['reason'] as String?,
+      );
+}

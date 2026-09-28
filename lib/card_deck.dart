@@ -18,6 +18,15 @@ const int maxAppRows = 4;
 
 int clampAppRows(int rows) => rows.clamp(1, maxAppRows);
 
+/// How tall a widget card is, in rows.
+///
+/// Fixed rather than chosen. An app widget declares its own minimum height and
+/// resizes itself to whatever it is given, so a row count here is a question
+/// about the deck, not about the widget — and three rows is the height at which
+/// the common ones (a clock, a calendar, a player) are legible while the deck
+/// still reads as a deck behind them.
+const int widgetCardRows = 3;
+
 class DeckCard {
   const DeckCard({
     required this.id,
@@ -29,6 +38,8 @@ class DeckCard {
     this.imageOffset = 0,
     this.showAppLabels = true,
     this.appRows = 1,
+    this.isWidget = false,
+    this.widgetId,
   });
 
   final String id;
@@ -69,6 +80,32 @@ class DeckCard {
   /// installed — and it cannot be deleted or moved off the bottom.
   final bool isAllApps;
 
+  /// This card hosts an Android app widget instead of a row of apps.
+  ///
+  /// Separate from [widgetId] being set, because the card exists before a widget
+  /// is chosen for it: making a widget card and then picking what goes on it are
+  /// two steps, and between them the card is a widget card with nothing on it
+  /// yet — which is a state it has to be able to draw.
+  final bool isWidget;
+
+  /// The host's id for the bound widget, or null when none is bound yet.
+  ///
+  /// Allocated by the Android side's [AppWidgetHost] and meaningless without it
+  /// — it is a handle, not a description of the widget, so a card whose id no
+  /// longer resolves has lost its widget and has to be given another.
+  final int? widgetId;
+
+  /// Whether this card has a widget actually bound and drawable.
+  bool get hasWidget => isWidget && widgetId != null;
+
+  /// Rows of icons this card occupies when open.
+  ///
+  /// Derived, so the two cannot disagree: a widget card is always
+  /// [widgetCardRows] tall whatever [appRows] happens to hold, and the layout,
+  /// the editor preview and the card itself all ask this rather than each
+  /// applying the rule for themselves.
+  int get rows => isWidget ? widgetCardRows : appRows;
+
   CardColor get color => colorForKey(colorKey);
 
   DeckCard copyWith({
@@ -79,6 +116,9 @@ class DeckCard {
     double? imageOffset,
     bool? showAppLabels,
     int? appRows,
+    bool? isWidget,
+    int? widgetId,
+    bool clearWidgetId = false,
   }) {
     return DeckCard(
       id: id,
@@ -90,12 +130,20 @@ class DeckCard {
       imageOffset: imageOffset ?? this.imageOffset,
       showAppLabels: showAppLabels ?? this.showAppLabels,
       appRows: clampAppRows(appRows ?? this.appRows),
+      isWidget: isWidget ?? this.isWidget,
+      // An explicit flag to clear it: passing null cannot mean "unbind", since
+      // null is also what "leave it alone" looks like through a copyWith.
+      widgetId: clearWidgetId ? null : (widgetId ?? this.widgetId),
     );
   }
 
   /// The apps on this card that are actually installed, in card order.
   /// The all-apps card ignores its own list and reports everything.
   List<LaunchableApp> resolve(List<LaunchableApp> installed) {
+    // A widget card shows a widget and nothing else. Any appIds it carries are
+    // from before it became one, and are kept rather than dropped so turning the
+    // card back into an apps card gets them back.
+    if (isWidget) return const [];
     if (isAllApps) {
       final all = [...installed]..sort(compareByLabel);
       return all;
@@ -120,6 +168,8 @@ class DeckCard {
         // this existed reads back identically, and one that never changed a row
         // count does not carry the field.
         if (appRows != 1) 'appRows': appRows,
+        if (isWidget) 'isWidget': true,
+        if (widgetId != null) 'widgetId': widgetId,
       };
 
   static DeckCard fromJson(Map<String, dynamic> json) {
@@ -143,6 +193,8 @@ class DeckCard {
       // a newer build, or a hand-edited file, would otherwise lay out a card
       // taller than the stack can place.
       appRows: clampAppRows((json['appRows'] as num?)?.toInt() ?? 1),
+      isWidget: json['isWidget'] as bool? ?? false,
+      widgetId: (json['widgetId'] as num?)?.toInt(),
     );
   }
 }

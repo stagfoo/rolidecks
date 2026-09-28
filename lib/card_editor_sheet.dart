@@ -6,6 +6,7 @@ import 'deck_card_view.dart';
 import 'models.dart';
 import 'launcher_bridge.dart';
 import 'stack_layout.dart';
+import 'widget_picker_screen.dart';
 import 'color_picker_screen.dart';
 import 'style_recents.dart';
 import 'icon_picker_screen.dart';
@@ -87,6 +88,17 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
   final _recents = StyleRecents();
   String? _imagePath;
   bool _pickingImage = false;
+
+  /// Progress text while a widget is being bound, and null otherwise. Doubles as
+  /// the guard against a second pick starting while the system's permission
+  /// prompt or the widget's own setup screen is still up.
+  String? _binding;
+
+  /// The chosen widget's name, for the line under the Change button.
+  ///
+  /// Only known for a widget picked in this session — a card reopened later has
+  /// its id and nothing else, so the label is read back from the host.
+  String? _widgetLabel;
   List<String> _recentColors = const [];
   List<String> _recentIcons = const [];
   late final TextEditingController _name = TextEditingController(
@@ -98,6 +110,28 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     super.initState();
     _loadRecents();
     _loadImage();
+    _loadWidgetLabel();
+  }
+
+  /// Names the widget already on the card, and notices when it has gone.
+  ///
+  /// A card stores a widget id and nothing else, so reopening the editor has no
+  /// idea what is on it. The same call answers both questions: a null means the
+  /// id no longer resolves — the widget's app was uninstalled, or its data
+  /// cleared — which is worth saying plainly, because the card will be drawing a
+  /// blank and nothing else would explain why.
+  Future<void> _loadWidgetLabel() async {
+    if (!_draft.hasWidget) return;
+    try {
+      final info = await LauncherBridge.instance.widgetInfo(_draft.widgetId!);
+      if (!mounted) return;
+      setState(() => _widgetLabel = info == null
+          ? 'That widget is gone — choose another'
+          : info.label);
+    } catch (e) {
+      // Not worth surfacing: the label is a nicety, and the Change button works
+      // without it.
+    }
   }
 
   Future<void> _loadImage() async {
@@ -178,14 +212,30 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
                   setState(() => _draft = _draft.copyWith(name: value)),
             ),
             const SizedBox(height: 18),
-            _label('App titles'),
-            const SizedBox(height: 4),
-            _labelsRow(),
-            const SizedBox(height: 14),
-            _label('Rows of icons'),
-            const SizedBox(height: 8),
-            _rowsRow(),
-            const SizedBox(height: 14),
+            // The all-apps card is the one card that cannot become a widget: it
+            // is the way to reach everything installed, and there is only one of
+            // it.
+            if (!_draft.isAllApps) ...[
+              _label('Holds'),
+              const SizedBox(height: 8),
+              _kindRow(),
+              const SizedBox(height: 14),
+            ],
+            if (_draft.isWidget) ...[
+              _label('Widget'),
+              const SizedBox(height: 8),
+              _widgetRow(),
+              const SizedBox(height: 14),
+            ] else ...[
+              _label('App titles'),
+              const SizedBox(height: 4),
+              _labelsRow(),
+              const SizedBox(height: 14),
+              _label('Rows of icons'),
+              const SizedBox(height: 8),
+              _rowsRow(),
+              const SizedBox(height: 14),
+            ],
             _label('Picture'),
             const SizedBox(height: 8),
             _imageRow(),
@@ -319,7 +369,7 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
     // at one row's height is the same lie in a different direction — the rows
     // would be squeezed into a card the deck will never draw that short.
     final height = StackStyle.standard.preferredCardHeight +
-        (_draft.appRows - 1) * StackStyle.standard.rowHeight;
+        (_draft.rows - 1) * StackStyle.standard.rowHeight;
     // The same fallback save applies, so the preview shows what you would get
     // rather than the blank you are momentarily typing.
     final card = DeckCardView(
@@ -448,6 +498,124 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
         ],
       ],
     );
+  }
+
+  /// Apps or a widget.
+  ///
+  /// Switching to a widget does not throw the card's apps away — they are kept
+  /// on the card and come back if it is switched again, because the switch is
+  /// easy to make by accident and a card of filed apps is tedious to rebuild.
+  Widget _kindRow() {
+    final accent = colorOf(_draft.colorKey);
+    return Row(
+      children: [
+        for (final widgetKind in [false, true]) ...[
+          if (widgetKind) const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(
+                () => _draft = _draft.copyWith(isWidget: widgetKind),
+              ),
+              child: Container(
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color:
+                      _draft.isWidget == widgetKind ? accent : DeckColors.surface,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(
+                    color: _draft.isWidget == widgetKind
+                        ? accent
+                        : DeckColors.surfaceEdge,
+                  ),
+                ),
+                child: Text(
+                  widgetKind ? 'A widget' : 'Apps',
+                  style: deckText(
+                    size: 13,
+                    weight: 700,
+                    color: _draft.isWidget == widgetKind
+                        ? onCardFor(accent)
+                        : DeckColors.text,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Which widget is on the card, and the button to change it.
+  Widget _widgetRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            _binding ?? (_draft.hasWidget
+                ? (_widgetLabel ?? 'A widget is on this card')
+                : 'None yet — three rows tall, whichever you pick'),
+            style: deckText(size: 11, color: DeckColors.textDim),
+          ),
+        ),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: _binding == null ? _pickWidget : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: DeckColors.surface,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: DeckColors.surfaceEdge),
+            ),
+            child: Text(
+              _draft.hasWidget ? 'Change' : 'Choose',
+              style: deckText(size: 12, weight: 700, color: DeckColors.text),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Picks a widget, binds it, and puts it on the draft.
+  ///
+  /// The old widget is released only once the new one is bound. Releasing first
+  /// would leave the card with nothing if the user then declined the permission
+  /// prompt or backed out of the widget's setup.
+  Future<void> _pickWidget() async {
+    final provider = await pickWidget(context, _draft);
+    if (provider == null || !mounted) return;
+
+    setState(() => _binding = 'Adding ${provider.label}…');
+    final binding = await LauncherBridge.instance.bindWidget(provider.provider);
+    if (!mounted) return;
+
+    if (!binding.ok || binding.widgetId == null) {
+      setState(() => _binding = null);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: DeckColors.surface,
+          content: Text(
+            binding.reason ?? 'That widget could not be added',
+            style: deckText(size: 12),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final previous = _draft.widgetId;
+    setState(() {
+      _binding = null;
+      _widgetLabel = provider.label;
+      _draft = _draft.copyWith(isWidget: true, widgetId: binding.widgetId);
+    });
+    if (previous != null && previous != binding.widgetId) {
+      await LauncherBridge.instance.releaseWidget(previous);
+    }
   }
 
   Widget _imageRow() {

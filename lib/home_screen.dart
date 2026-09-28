@@ -11,6 +11,7 @@ import 'deck_store.dart';
 import 'diagnostics_screen.dart';
 import 'edit_deck_screen.dart';
 import 'folder_screen.dart';
+import 'card_editor_sheet.dart';
 import 'launcher_bridge.dart';
 import 'saved_shortcuts.dart';
 import 'models.dart';
@@ -122,6 +123,11 @@ class _HomeScreenState extends State<HomeScreen>
     // Before the first list is built, so a shortcut made just before the
     // launcher was killed is already in it.
     await _collectPendingShortcuts();
+    // Widget ids outlive the cards that held them — a card deleted while the
+    // launcher was not running, or a deck restored from a backup — and an id
+    // nobody releases keeps its app doing update work for a widget on no screen
+    // at all. Done on load, where the full deck is known.
+    await _reapWidgets(deck);
     final images = await LauncherBridge.instance.cardImages();
     final cached = await _appCache.load();
 
@@ -416,9 +422,47 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// Opens the editor on one card, straight from the deck.
+  ///
+  /// The widget picker lives in the editor, so "choose a widget" on an empty
+  /// widget card goes there rather than duplicating the bind-and-release
+  /// handling that has to happen around the pick.
+  Future<void> _editCardFromHome(DeckCard card) async {
+    final result = await showCardEditor(
+      context,
+      card,
+      position: _deck.folders.indexWhere((entry) => entry.id == card.id),
+      folderCount: _deck.folders.length,
+      apps: card.resolve(_installed),
+    );
+    if (result == null) return;
+    final widgetId = card.widgetId;
+    if (result.deleted && widgetId != null) {
+      await LauncherBridge.instance.releaseWidget(widgetId);
+    }
+    await _update(
+      result.deleted
+          ? _deck.removeCard(card.id)
+          : _deck.updateCard(card.id, (_) => result.card),
+    );
+  }
+
+  /// Hands back every widget this launcher holds that no card is using.
+  Future<void> _reapWidgets(CardDeck deck) async {
+    try {
+      await LauncherBridge.instance.reapWidgets([
+        for (final card in deck.cards)
+          if (card.widgetId case final id?) id,
+      ]);
+    } catch (e) {
+      // A failed reap leaks an id until the next launch, which is a great deal
+      // better than a launcher that will not start.
+    }
+  }
+
   /// Rows per card, parallel to the deck. One place, so the layout the rail
   /// scrolls to is solved from the same numbers the deck is drawn with.
-  List<int> _rowCounts() => [for (final card in _deck.cards) card.appRows];
+  List<int> _rowCounts() => [for (final card in _deck.cards) card.rows];
 
   Widget _restingStack(StackSpec spec) {
     final stack = SizedBox(
@@ -457,6 +501,14 @@ class _HomeScreenState extends State<HomeScreen>
                     ? _openCard(_deck[i])
                     : setState(() => _focused = i),
                 onLongPress: _openEditDeck,
+                // Only on the open card, and only while it has no widget: the
+                // empty state is the one thing on a widget card worth tapping,
+                // and on a covered card it is not visible to tap.
+                onPickWidget: _deck[i].isWidget &&
+                        !_deck[i].hasWidget &&
+                        i == spec.focusedIndex
+                    ? () => _editCardFromHome(_deck[i])
+                    : null,
                 onAppTap: _launch,
                 onAppLongPress: (app) => _showAppMenu(_deck[i], app),
               ),
@@ -528,6 +580,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _openCard(DeckCard card) async {
+    // A widget card has no folder to open — the widget takes the taps inside it,
+    // so this only fires on the card's name strip, where the useful thing is the
+    // card's own settings rather than a folder that would always be empty.
+    if (card.isWidget) return _editCardFromHome(card);
+
     final chosen = await Navigator.of(context).push<LaunchableApp>(
       MaterialPageRoute(
         builder: (context) => FolderScreen(

@@ -3,6 +3,9 @@ package com.rolidecks.rolidecks
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.SharedPreferences
+import android.appwidget.AppWidgetHostView
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.IntentFilter
@@ -72,6 +75,24 @@ class MainActivity : FlutterActivity() {
 
     private val requestCreateShortcut = 4011
     private val requestCardImage = 4012
+    private val widgetViewType = "rolidecks/widget"
+    private val requestBindWidget = 4013
+    private val requestConfigureWidget = 4014
+
+    private val appWidgetManager: AppWidgetManager by lazy {
+        AppWidgetManager.getInstance(this)
+    }
+
+    /**
+     * Created once and kept for the life of the activity. The host is what owns
+     * every bound widget id, so a second host — or a host rebuilt with a
+     * different id — would orphan every widget already on a card.
+     */
+    private val widgetHost: RolidecksWidgetHost by lazy { RolidecksWidgetHost(this) }
+
+    /** Set while the system's bind or configure screen is up. */
+    private var pendingWidgetId: Int? = null
+    private var pendingWidgetResult: MethodChannel.Result? = null
 
     private var pendingImageCard: String? = null
     private var pendingImageResult: MethodChannel.Result? = null
@@ -185,6 +206,14 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger, methodChannelName
         ).also { it.setMethodCallHandler { call, result -> handle(call, result) } }
 
+        // Registered on the engine rather than created per card: the factory is
+        // what hands a card its AppWidgetHostView, and the host it reads from has
+        // to be this activity's one.
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            widgetViewType,
+            WidgetViewFactory({ widgetHost }, appWidgetManager)
+        )
+
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -267,6 +296,32 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * A host that is not listening receives no RemoteViews updates, so widgets
+     * freeze at whatever they last drew — a clock stops, a calendar keeps
+     * yesterday. Started and stopped with the activity rather than held open,
+     * because listening costs the widgets' own update work while nothing is on
+     * screen to show it.
+     */
+    override fun onStart() {
+        super.onStart()
+        try {
+            widgetHost.startListening()
+        } catch (e: Exception) {
+            // Some OEM builds throw here when no widget is bound yet. Not fatal:
+            // nothing is listening for, and the next onStart tries again.
+        }
+    }
+
+    override fun onStop() {
+        try {
+            widgetHost.stopListening()
+        } catch (e: Exception) {
+            // Symmetric with onStart; a host that never started cannot stop.
+        }
+        super.onStop()
+    }
+
     override fun onDestroy() {
         unregisterPackageReceiver()
         worker.shutdown()
@@ -331,6 +386,21 @@ class MainActivity : FlutterActivity() {
             "launchIntentUri" -> result.success(
                 launchIntentUri(call.argument<String>("uri") ?: "")
             )
+            "listWidgetProviders" -> onWorker(result) { listWidgetProviders() }
+            "bindWidget" -> bindWidget(call.argument<String>("provider") ?: "", result)
+            "widgetInfo" -> result.success(
+                widgetInfo(call.argument<Int>("widgetId") ?: -1)
+            )
+            "releaseWidget" -> {
+                releaseWidget(call.argument<Int>("widgetId") ?: -1)
+                result.success(null)
+            }
+            "reapWidgets" -> {
+                reapWidgets(
+                    call.argument<List<Int>>("keep") ?: emptyList()
+                )
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -573,6 +643,42 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == requestBindWidget || requestCode == requestConfigureWidget) {
+            val widgetId = pendingWidgetId
+            val result = pendingWidgetResult
+            pendingWidgetId = null
+            pendingWidgetResult = null
+            if (widgetId == null) return
+
+            if (resultCode != RESULT_OK) {
+                // Declined, or backed out of the widget's own setup. The id is
+                // released either way: an allocated id nobody owns is a widget
+                // the system keeps updating for a card that never got it.
+                releaseWidget(widgetId)
+                result?.success(
+                    mapOf(
+                        "ok" to false,
+                        "reason" to if (requestCode == requestBindWidget) {
+                            "permission to add widgets was declined"
+                        } else {
+                            "the widget's setup was cancelled"
+                        }
+                    )
+                )
+                return
+            }
+
+            // Bound now, so its setup screen can run — configure follows bind
+            // rather than replacing it.
+            if (requestCode == requestBindWidget) {
+                if (result != null) configureOrFinish(widgetId, result)
+                return
+            }
+            result?.success(mapOf("ok" to true, "widgetId" to widgetId))
+            return
+        }
+
         if (requestCode == requestCardImage) {
             val cardId = pendingImageCard
             val result = pendingImageResult
@@ -887,6 +993,162 @@ class MainActivity : FlutterActivity() {
         } else {
             // Some skinned builds drop the dedicated home-settings screen.
             startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /**
+     * Every app widget installed on the phone, for the launcher's own picker.
+     *
+     * Its own picker rather than ACTION_APPWIDGET_PICK: the system picker returns
+     * an already-allocated id owned by *it*, and on several OEM builds returns
+     * nothing at all to an app that is not the default launcher. Listing the
+     * providers and allocating the id here is the path that behaves the same
+     * everywhere.
+     */
+    private fun listWidgetProviders(): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        for (info in appWidgetManager.installedProviders) {
+            val component = info.provider ?: continue
+            out.add(
+                mapOf(
+                    "provider" to component.flattenToString(),
+                    "packageName" to component.packageName,
+                    "label" to info.loadLabel(packageManager).toString(),
+                    // In dp: the Dart side compares these against a card's size
+                    // to warn when a widget is being put somewhere too small.
+                    "minWidth" to pxToDp(info.minWidth),
+                    "minHeight" to pxToDp(info.minHeight),
+                    "resizable" to (
+                        info.resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0
+                        ),
+                    "needsConfigure" to (info.configure != null)
+                )
+            )
+        }
+        return out
+    }
+
+    /**
+     * Allocates an id for [provider] and gets it bound, asking the user if it has
+     * to.
+     *
+     * bindAppWidgetIdIfAllowed succeeds only for a caller holding BIND_APPWIDGET,
+     * which is a privileged permission a sideloaded launcher cannot hold — so the
+     * false it returns is the normal path, not the error path, and the system's
+     * own bind dialog is how an ordinary launcher gets permission for one widget
+     * at a time.
+     */
+    private fun bindWidget(provider: String, result: MethodChannel.Result) {
+        val component = try {
+            android.content.ComponentName.unflattenFromString(provider)
+        } catch (e: Exception) {
+            null
+        }
+        if (component == null) {
+            result.success(mapOf("ok" to false, "reason" to "unreadable provider"))
+            return
+        }
+
+        val widgetId = widgetHost.allocateAppWidgetId()
+        val bound = try {
+            appWidgetManager.bindAppWidgetIdIfAllowed(widgetId, component)
+        } catch (e: Exception) {
+            false
+        }
+
+        if (bound) {
+            configureOrFinish(widgetId, result)
+            return
+        }
+
+        // Ask. The id stays allocated while the dialog is up: it is what the
+        // system binds on approval, and it is released in onActivityResult if the
+        // user declines.
+        pendingWidgetId = widgetId
+        pendingWidgetResult = result
+        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, component)
+        }
+        try {
+            startActivityForResult(intent, requestBindWidget)
+        } catch (e: ActivityNotFoundException) {
+            widgetHost.deleteAppWidgetId(widgetId)
+            pendingWidgetId = null
+            pendingWidgetResult = null
+            result.success(
+                mapOf("ok" to false, "reason" to "this phone has no widget permission screen")
+            )
+        }
+    }
+
+    /**
+     * Runs the widget's own setup screen if it has one, then reports the id.
+     *
+     * A widget with a configure activity is not usable until it has run — it has
+     * no data to draw yet — so a card bound but unconfigured would show a widget
+     * that looks broken rather than one waiting to be set up.
+     */
+    private fun configureOrFinish(widgetId: Int, result: MethodChannel.Result) {
+        val info: AppWidgetProviderInfo? = appWidgetManager.getAppWidgetInfo(widgetId)
+        if (info?.configure == null) {
+            result.success(mapOf("ok" to true, "widgetId" to widgetId))
+            return
+        }
+        pendingWidgetId = widgetId
+        pendingWidgetResult = result
+        try {
+            widgetHost.startAppWidgetConfigureActivityForResult(
+                this, widgetId, 0, requestConfigureWidget, null
+            )
+        } catch (e: Exception) {
+            // Some widgets declare a configure activity that cannot be started by
+            // anyone but their own app. Keeping the binding is better than
+            // throwing the widget away — most draw a usable default.
+            pendingWidgetId = null
+            pendingWidgetResult = null
+            result.success(mapOf("ok" to true, "widgetId" to widgetId))
+        }
+    }
+
+    /** What is bound to [widgetId] now, or null if nothing is. */
+    private fun widgetInfo(widgetId: Int): Map<String, Any?>? {
+        if (widgetId < 0) return null
+        val info = appWidgetManager.getAppWidgetInfo(widgetId) ?: return null
+        return mapOf(
+            "provider" to info.provider?.flattenToString(),
+            "packageName" to (info.provider?.packageName ?: ""),
+            "label" to info.loadLabel(packageManager).toString(),
+            "minHeight" to pxToDp(info.minHeight)
+        )
+    }
+
+    /** Gives a widget id back to the system. Nothing else frees one. */
+    private fun releaseWidget(widgetId: Int) {
+        if (widgetId < 0) return
+        try {
+            widgetHost.deleteAppWidgetId(widgetId)
+        } catch (e: Exception) {
+            // Already gone is the outcome being asked for.
+        }
+    }
+
+    /**
+     * Releases every id this host holds that no card is using.
+     *
+     * Ids outlive the cards that referenced them — a card deleted while the
+     * launcher was not running, a deck restored from a backup — and an id nobody
+     * releases stays bound for the life of the install, keeping the widget's app
+     * doing update work for a widget that is on no screen at all.
+     */
+    private fun reapWidgets(keep: List<Int>) {
+        val known = try {
+            widgetHost.appWidgetIds
+        } catch (e: Exception) {
+            return
+        }
+        for (id in known) {
+            if (!keep.contains(id)) releaseWidget(id)
         }
     }
 
