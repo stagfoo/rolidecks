@@ -21,6 +21,7 @@ class DiagnosticsScreen extends StatefulWidget {
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Map<String, Object?>? _shortcuts;
   Map<String, Object?>? _widgets;
+  LauncherHealth? _health;
   ScreenMetrics? _metrics;
   Object? _error;
 
@@ -38,12 +39,14 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         LauncherBridge.instance.shortcutDiagnostics(),
         LauncherBridge.instance.screenMetrics(),
         LauncherBridge.instance.widgetDiagnostics(),
+        LauncherBridge.instance.health(),
       ]);
       if (!mounted) return;
       setState(() {
         _shortcuts = results[0] as Map<String, Object?>;
         _metrics = results[1] as ScreenMetrics;
         _widgets = results[2] as Map<String, Object?>;
+        _health = results[3] as LauncherHealth;
         _error = null;
       });
     } catch (e) {
@@ -72,6 +75,14 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         }
       } else {
         buffer.writeln('${entry.key}: $value');
+      }
+    }
+    final health = _health;
+    if (health != null && health.hasCrash) {
+      buffer.writeln('crashes: ${health.crashCount}');
+      buffer.writeln('lastCrash:');
+      for (final line in health.lastCrash.split('\n')) {
+        buffer.writeln('  $line');
       }
     }
     return buffer.toString();
@@ -130,6 +141,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
               ],
             ),
             const SizedBox(height: 8),
+            ..._healthSection(),
             if (_error != null)
               _Line(name: 'error', value: '$_error', bad: true)
             else if (shortcuts == null)
@@ -174,6 +186,94 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The crash that stopped the last launch, and the way out of safe mode.
+///
+/// Above everything else on this screen. When the launcher has been coming up
+/// without widgets, that is the only thing being looked for, and it explains
+/// every other number below it.
+extension on _DiagnosticsScreenState {
+  List<Widget> _healthSection() {
+    final health = _health;
+    if (health == null || (!health.safeMode && !health.hasCrash)) return const [];
+
+    return [
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: DeckColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: DeckColors.surfaceEdge),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              health.safeMode
+                  ? 'Widgets are off after a crash'
+                  : 'The launcher crashed recently',
+              style: deckText(size: 14, weight: 700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              health.safeMode
+                  ? 'The last launch did not reach the deck, so this one left '
+                      'widgets out. Everything else works normally.'
+                  : 'It started again afterwards. The trace is below.',
+              style: deckText(
+                size: 11.5,
+                color: DeckColors.textDim,
+                height: 1.3,
+              ),
+            ),
+            if (health.hasCrash) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: DeckColors.ground,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  health.lastCrash,
+                  style: deckText(
+                    size: 10,
+                    color: DeckColors.text,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+            if (health.safeMode) ...[
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: () async {
+                  await LauncherBridge.instance.leaveSafeMode();
+                  await _load();
+                  // The State's own mounted, not the BuildContext's: this is a
+                  // State method and the context here is the State's.
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: DeckColors.surface,
+                      content: Text(
+                        'Widgets are on again — reopen the launcher',
+                        style: deckText(size: 12),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Turn widgets back on'),
+              ),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
   }
 }
 

@@ -53,6 +53,10 @@ class _HomeScreenState extends State<HomeScreen>
 
 
   bool _loading = true;
+
+  /// This launch came up after one that died, so widget platform views are left
+  /// out until the user turns them back on.
+  LauncherHealth _health = const LauncherHealth();
   bool _isDefault = true;
   StreamSubscription<String>? _packageSub;
   bool _refreshing = false;
@@ -120,6 +124,9 @@ class _HomeScreenState extends State<HomeScreen>
       await _store.save(loaded);
     }
     final deck = loaded;
+    // Before anything that could be what killed the last launch: this decides
+    // whether widget cards draw their widgets at all this time round.
+    final health = await LauncherBridge.instance.health();
     // Before the first list is built, so a shortcut made just before the
     // launcher was killed is already in it.
     await _collectPendingShortcuts();
@@ -133,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (!mounted) return;
     setState(() {
+      _health = health;
       _deck = deck;
       _cardImages = images;
       if (cached != null) {
@@ -141,6 +149,13 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _loading = false;
     });
+
+    // Once the deck has actually been handed to the framework. Until this lands
+    // the next launch assumes this one died and comes up without widgets, so it
+    // has to be said only where there is really something on screen.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => LauncherBridge.instance.launcherReady(),
+    );
 
     // Wrapped, because this had no error handling at all: one failing platform
     // call left the launcher running on nothing but its cache, silently, with
@@ -504,6 +519,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // Only on the open card, and only while it has no widget: the
                 // empty state is the one thing on a widget card worth tapping,
                 // and on a covered card it is not visible to tap.
+                safeMode: _health.safeMode,
                 onPickWidget: _deck[i].isWidget &&
                         !_deck[i].hasWidget &&
                         i == spec.focusedIndex

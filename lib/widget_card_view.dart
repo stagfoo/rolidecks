@@ -21,6 +21,7 @@ class WidgetCardBody extends StatelessWidget {
     required this.widgetId,
     required this.onCard,
     this.onPick,
+    this.safeMode = false,
   });
 
   /// The host's id for the bound widget, or null when the card has none yet.
@@ -31,10 +32,20 @@ class WidgetCardBody extends StatelessWidget {
   /// Opens the picker. Null when the card is not editable from here.
   final VoidCallback? onPick;
 
+  /// The previous launch never reached the deck, so no widget is built this time.
+  ///
+  /// This is the switch the crash-loop breaker actually throws. Hosting another
+  /// process's views is the most involved thing this launcher does and the most
+  /// likely thing to have killed it, so a launch that follows a death leaves it
+  /// out and says so, rather than reproducing the crash and being relaunched
+  /// into it again.
+  final bool safeMode;
+
   static const _viewType = 'rolidecks/widget';
 
   @override
   Widget build(BuildContext context) {
+    if (safeMode) return _safe(context);
     final id = widgetId;
     if (id == null) return _empty(context);
 
@@ -66,6 +77,42 @@ class WidgetCardBody extends StatelessWidget {
               ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
               ..create();
           },
+        ),
+      ),
+    );
+  }
+
+  /// What a widget card shows when widgets are switched off.
+  ///
+  /// Says which state it is in rather than just drawing nothing: a blank card
+  /// after a crash is indistinguishable from the blank card that was the
+  /// original complaint.
+  Widget _safe(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shield_outlined, size: 18, color: onCard),
+            const SizedBox(height: 6),
+            Text(
+              'Widgets are off — the launcher crashed last time',
+              textAlign: TextAlign.center,
+              style: deckText(size: 12, weight: 600, color: onCard),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Settings › Diagnostics has the crash, and the switch to turn '
+              'them back on',
+              textAlign: TextAlign.center,
+              style: deckText(
+                size: 10.5,
+                color: onCard.withValues(alpha: 0.75),
+                height: 1.25,
+              ),
+            ),
+          ],
         ),
       ),
     );

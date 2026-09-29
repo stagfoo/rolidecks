@@ -339,6 +339,52 @@ class LauncherBridge {
     };
   }
 
+  /// Whether this launch is a safe one, and what killed the last one.
+  ///
+  /// Never throws: it is read on the path that draws the deck, and a launcher
+  /// that will not start because it could not ask whether it should start
+  /// carefully is the failure this exists to prevent.
+  Future<LauncherHealth> health() async {
+    try {
+      final map = await _channel.invokeMapMethod<Object?, Object?>('health');
+      return LauncherHealth.fromPlatform(map ?? const {});
+    } catch (e) {
+      return const LauncherHealth();
+    }
+  }
+
+  /// Says the deck reached the screen. Until this arrives, the next launch
+  /// assumes this one died and comes up safe.
+  Future<void> launcherReady() async {
+    try {
+      await _channel.invokeMethod<void>('launcherReady');
+    } catch (e) {
+      // At worst the next launch is a safe one, which is the harmless direction
+      // for this to fail in.
+    }
+  }
+
+  /// Records a Dart-side error where the Android side keeps the crash log.
+  ///
+  /// Fire and forget, and never awaited: it runs from the error handler, and an
+  /// error handler that can itself fail or block is a way to lose the error.
+  void noteDartError(String message) {
+    try {
+      _channel.invokeMethod<void>('noteDartError', {'message': message});
+    } catch (e) {
+      // Nothing useful to do from inside the error path.
+    }
+  }
+
+  /// Turns widgets back on after a crash.
+  Future<void> leaveSafeMode() async {
+    try {
+      await _channel.invokeMethod<void>('leaveSafeMode');
+    } catch (e) {
+      // Reported by the button's own state; nothing here can fix it.
+    }
+  }
+
   Future<ScreenMetrics> screenMetrics() async {
     final map = await _channel.invokeMapMethod<Object?, Object?>('screenMetrics');
     return ScreenMetrics.fromPlatform(map ?? const {});

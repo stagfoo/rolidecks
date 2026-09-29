@@ -506,4 +506,39 @@ void main() {
       expect(deck.cards.last.isAllApps, isTrue);
     });
   });
+
+  group('safe mode plumbing', () {
+    test('health defaults to running normally', () {
+      // The default matters: this is what a launch gets when the platform call
+      // fails, and defaulting to safeMode would leave widgets off forever on any
+      // phone where the call does not work.
+      const health = LauncherHealth();
+      expect(health.safeMode, isFalse);
+      expect(health.hasCrash, isFalse);
+      expect(health.crashCount, 0);
+    });
+
+    test('reads what the platform reports', () {
+      final health = LauncherHealth.fromPlatform({
+        'safeMode': true,
+        'lastCrash': 'on main: boom',
+        'crashCount': 2,
+      });
+      expect(health.safeMode, isTrue);
+      expect(health.hasCrash, isTrue);
+      expect(health.lastCrash, 'on main: boom');
+      expect(health.crashCount, 2);
+    });
+
+    test('a missing or malformed reply is not a crash report', () {
+      final empty = LauncherHealth.fromPlatform(const {});
+      expect(empty.safeMode, isFalse);
+      expect(empty.hasCrash, isFalse);
+      // An empty string is "nothing recorded", not a crash with no message.
+      expect(
+        LauncherHealth.fromPlatform(const {'lastCrash': ''}).hasCrash,
+        isFalse,
+      );
+    });
+  });
 }

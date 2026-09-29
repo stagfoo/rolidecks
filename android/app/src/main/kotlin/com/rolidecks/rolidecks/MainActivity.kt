@@ -236,7 +236,29 @@ class MainActivity : FlutterActivity() {
             })
     }
 
+    /**
+     * Whether this launch is a safe one, decided before anything else runs.
+     *
+     * Read once and held: the Dart side asks for it while building the deck, and
+     * a value that could change underneath that would show widgets on some cards
+     * and not others in the same frame.
+     */
+    private val health: Health by lazy { Health(this) }
+    private var startedSafe = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // First, before any of this launch's work: if the previous launch never
+        // reached the deck, this one turns widgets off rather than repeating it.
+        // A launcher that crashes on startup is relaunched by Android straight
+        // away, so nothing outside the process gets a chance to intervene.
+        try {
+            health.installCrashHandler()
+            health.noteLaunchStarted()
+            startedSafe = health.safeMode
+        } catch (e: Throwable) {
+            // Safety plumbing must never be the thing that stops the launcher.
+            startedSafe = true
+        }
         super.onCreate(savedInstanceState)
         // The pin request can be what started this activity, not only what
         // arrives at a running one.
@@ -401,6 +423,26 @@ class MainActivity : FlutterActivity() {
             )
             "listWidgetProviders" -> onWorker(result) { listWidgetProviders() }
             "widgetDiagnostics" -> result.success(widgetDiagnostics())
+            "health" -> result.success(
+                mapOf(
+                    "safeMode" to startedSafe,
+                    "lastCrash" to health.lastCrash,
+                    "crashCount" to health.crashCount
+                )
+            )
+            "noteDartError" -> {
+                health.recordDartError(call.argument<String>("message") ?: "")
+                result.success(null)
+            }
+            "launcherReady" -> {
+                health.noteLaunchFinished()
+                result.success(null)
+            }
+            "leaveSafeMode" -> {
+                health.leaveSafeMode()
+                startedSafe = false
+                result.success(null)
+            }
             "bindWidget" -> bindWidget(call.argument<String>("provider") ?: "", result)
             "widgetInfo" -> result.success(
                 widgetInfo(call.argument<Int>("widgetId") ?: -1)
@@ -1229,6 +1271,7 @@ class MainActivity : FlutterActivity() {
             // prime suspect for a widget that draws nothing, and a suspect is
             // worth confirming rather than reasoning about.
             "flutterSurface" to flutterSurfaceKind(),
+            "safeMode" to startedSafe,
             // Newest last, so reading down the list is reading forwards in time.
             "widgetLog" to WidgetNotes.read()
         )

@@ -39,6 +39,7 @@ class DeckCardView extends StatelessWidget {
     this.imagePath,
     this.imageOffset = 0,
     this.onPickWidget,
+    this.safeMode = false,
   });
 
   final DeckCard card;
@@ -79,6 +80,9 @@ class DeckCardView extends StatelessWidget {
   /// Opens the widget picker, for a widget card with nothing on it yet. Null
   /// where the card is not editable from — a preview, or arrange mode.
   final VoidCallback? onPickWidget;
+
+  /// The last launch died, so widgets are left out of this one.
+  final bool safeMode;
 
   /// Extra height added above the card, hidden behind the card in front.
   ///
@@ -242,6 +246,7 @@ class DeckCardView extends StatelessWidget {
         widgetId: card.widgetId,
         onCard: onCard,
         onPick: onPickWidget,
+        safeMode: safeMode,
       );
     }
     if (apps.isEmpty) {

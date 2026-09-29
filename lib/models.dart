@@ -212,3 +212,29 @@ class WidgetBinding {
         reason: map['reason'] as String?,
       );
 }
+
+
+/// Whether the launcher is running normally, and what stopped it last time.
+class LauncherHealth {
+  const LauncherHealth({
+    this.safeMode = false,
+    this.lastCrash = '',
+    this.crashCount = 0,
+  });
+
+  /// The previous launch never reached the deck, so this one leaves widgets out.
+  final bool safeMode;
+
+  /// The recorded stack from whatever killed a thread last, or empty.
+  final String lastCrash;
+
+  final int crashCount;
+
+  bool get hasCrash => lastCrash.isNotEmpty;
+
+  static LauncherHealth fromPlatform(Map<Object?, Object?> map) => LauncherHealth(
+        safeMode: map['safeMode'] as bool? ?? false,
+        lastCrash: (map['lastCrash'] as String?) ?? '',
+        crashCount: (map['crashCount'] as num?)?.toInt() ?? 0,
+      );
+}
