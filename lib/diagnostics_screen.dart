@@ -20,6 +20,7 @@ class DiagnosticsScreen extends StatefulWidget {
 
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Map<String, Object?>? _shortcuts;
+  Map<String, Object?>? _widgets;
   ScreenMetrics? _metrics;
   Object? _error;
 
@@ -36,11 +37,13 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       final results = await Future.wait([
         LauncherBridge.instance.shortcutDiagnostics(),
         LauncherBridge.instance.screenMetrics(),
+        LauncherBridge.instance.widgetDiagnostics(),
       ]);
       if (!mounted) return;
       setState(() {
         _shortcuts = results[0] as Map<String, Object?>;
         _metrics = results[1] as ScreenMetrics;
+        _widgets = results[2] as Map<String, Object?>;
         _error = null;
       });
     } catch (e) {
@@ -56,6 +59,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     if (_error != null) buffer.writeln('error: $_error');
     for (final entry in (_shortcuts ?? const {}).entries) {
       buffer.writeln('${entry.key}: ${entry.value}');
+    }
+    // Lists one per line rather than as a Dart list literal: the widget log is
+    // the part most likely to be pasted back to someone, and a single 400-column
+    // line of it is unreadable.
+    for (final entry in (_widgets ?? const {}).entries) {
+      final value = entry.value;
+      if (value is List) {
+        buffer.writeln('${entry.key}:');
+        for (final line in value) {
+          buffer.writeln('  $line');
+        }
+      } else {
+        buffer.writeln('${entry.key}: $value');
+      }
     }
     return buffer.toString();
   }
@@ -145,6 +162,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   _Line(name: entry.key, value: '${entry.value}'),
               if (_metrics != null)
                 _Line(name: 'screen', value: '$_metrics'),
+              ..._widgetSection(),
             ],
             const SizedBox(height: 16),
             if (shortcuts != null && !isHome)
@@ -156,6 +174,75 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         ),
       ),
     );
+  }
+}
+
+/// Everything about widget cards, or nothing at all when there are none.
+///
+/// Its own section rather than more lines in the shortcut list, because the
+/// order matters here: whether the host is listening and whether an id is bound
+/// decide what the log below them means, and reading the log first only invites
+/// chasing a line that was never the cause.
+extension on _DiagnosticsScreenState {
+  List<Widget> _widgetSection() {
+    final widgets = _widgets;
+    if (widgets == null) return const [];
+
+    final held = (widgets['heldWidgetIds'] as num?)?.toInt() ?? 0;
+    final listening = widgets['hostListening'] == true;
+    final providers = (widgets['installedWidgetProviders'] as num?)?.toInt() ?? 0;
+    final bound = (widgets['boundWidgets'] as List?) ?? const [];
+    final log = (widgets['widgetLog'] as List?) ?? const [];
+
+    return [
+      const Divider(height: 24, color: DeckColors.surfaceEdge),
+      Text('Widgets', style: deckText(size: 14, weight: 700)),
+      const SizedBox(height: 4),
+      _Line(
+        name: 'widgets installed on this phone',
+        value: '$providers',
+        bad: providers <= 0,
+        note: providers <= 0
+            ? 'Nothing to put on a widget card until an app that provides one '
+                'is installed.'
+            : null,
+      ),
+      _Line(
+        name: 'the host is listening',
+        value: listening ? 'yes' : 'no',
+        bad: !listening,
+        note: listening
+            ? null
+            : 'A host that is not listening receives no updates, so a widget '
+                'stays blank however well it is bound.',
+      ),
+      _Line(
+        name: 'widget ids this launcher holds',
+        value: '$held',
+        bad: held == 0,
+        note: held == 0
+            ? 'No widget is bound. A widget card with nothing bound draws '
+                'nothing — choose a widget on the card.'
+            : null,
+      ),
+      for (final entry in bound) _Line(name: 'bound', value: '$entry'),
+      if (log.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(
+          'What happened, oldest first',
+          style: deckText(size: 12, weight: 600, color: DeckColors.textDim),
+        ),
+        const SizedBox(height: 4),
+        for (final line in log)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Text(
+              '$line',
+              style: deckText(size: 11, color: DeckColors.textDim, height: 1.3),
+            ),
+          ),
+      ],
+    ];
   }
 }
 

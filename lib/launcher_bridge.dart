@@ -324,6 +324,21 @@ class LauncherBridge {
   Future<void> reapWidgets(List<int> keep) =>
       _channel.invokeMethod<void>('reapWidgets', {'keep': keep});
 
+  /// Why a widget card is blank.
+  ///
+  /// The counterpart to [shortcutDiagnostics]: a widget that draws nothing has
+  /// several possible causes that look identical on the card — the id is not
+  /// bound, the host is not listening, the view was never asked for, or it was
+  /// built and given no room — and each leaves a different trace.
+  Future<Map<String, Object?>> widgetDiagnostics() async {
+    final map =
+        await _channel.invokeMapMethod<Object?, Object?>('widgetDiagnostics');
+    return {
+      for (final entry in (map ?? const {}).entries)
+        '${entry.key}': entry.value,
+    };
+  }
+
   Future<ScreenMetrics> screenMetrics() async {
     final map = await _channel.invokeMapMethod<Object?, Object?>('screenMetrics');
     return ScreenMetrics.fromPlatform(map ?? const {});

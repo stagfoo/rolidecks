@@ -43,6 +43,31 @@ class RolidecksWidgetHost(context: Context) : AppWidgetHost(context, WIDGET_HOST
 }
 
 /**
+ * What happened the last few times a widget view was built.
+ *
+ * A widget that draws nothing is the hardest state to explain from the outside:
+ * the card is the right height, the deck is fine, and the space where the widget
+ * should be is simply empty. Every branch that can end in that blank writes down
+ * which one it was, so the answer is readable off the phone rather than inferred.
+ */
+object WidgetNotes {
+    private const val keep = 8
+    private val lines = ArrayDeque<String>()
+
+    @Synchronized
+    fun note(line: String) {
+        lines.addLast(line)
+        while (lines.size > keep) lines.removeFirst()
+    }
+
+    @Synchronized
+    fun read(): List<String> = lines.toList()
+
+    @Synchronized
+    fun clear() = lines.clear()
+}
+
+/**
  * Hands Flutter an [AppWidgetHostView] for the widget id it asks for.
  *
  * Hybrid composition, not a virtual display: a widget's content is RemoteViews
@@ -59,6 +84,7 @@ class WidgetViewFactory(
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val params = args as? Map<*, *>
         val widgetId = (params?.get("widgetId") as? Number)?.toInt() ?: -1
+        WidgetNotes.note("factory asked for widget $widgetId (view $viewId)")
         return WidgetPlatformView(context, widgetId, hostProvider(), appWidgetManager)
     }
 }
@@ -78,19 +104,73 @@ private class WidgetPlatformView(
         host: RolidecksWidgetHost?,
         appWidgetManager: AppWidgetManager
     ): View {
-        val info = if (widgetId >= 0) appWidgetManager.getAppWidgetInfo(widgetId) else null
+        if (widgetId < 0) {
+            WidgetNotes.note("no widget id reached the factory")
+            return View(context)
+        }
+        if (host == null) {
+            WidgetNotes.note("widget $widgetId: no host — the activity is gone")
+            return View(context)
+        }
+        val info = try {
+            appWidgetManager.getAppWidgetInfo(widgetId)
+        } catch (e: Exception) {
+            WidgetNotes.note("widget $widgetId: info threw ${e.javaClass.simpleName}")
+            null
+        }
         // A null info means the id is not bound any more — the widget's app was
         // uninstalled, or its data was cleared. An empty view rather than a
-        // crash: the card is still there to be given another widget, and the Dart
-        // side is told separately so it can say so.
-        if (host == null || info == null) return View(context)
-        return host.createView(context.applicationContext, widgetId, info).apply {
-            setAppWidget(widgetId, info)
-            // The card decides how big the widget is, so the host view is told
-            // its size rather than measuring itself from the provider's minimum.
-            // Without this a widget whose declared minimum is taller than the
-            // card overflows it instead of resizing into it.
-            updateAppWidgetSize(Bundle.EMPTY, 0, 0, 0, 0)
+        // crash: the card is still there to be given another widget.
+        if (info == null) {
+            WidgetNotes.note(
+                "widget $widgetId: nothing bound to this id — it was never bound, " +
+                    "or its app is gone"
+            )
+            return View(context)
+        }
+
+        return try {
+            val view = host.createView(context.applicationContext, widgetId, info)
+            view.setAppWidget(widgetId, info)
+            WidgetNotes.note(
+                "widget $widgetId: view built for ${info.provider?.flattenToShortString()}" +
+                    " (min ${context.pxToDp(info.minWidth)}x${context.pxToDp(info.minHeight)}dp)"
+            )
+            // The size is sent once the view has been laid out, because only then
+            // is there a size to send.
+            //
+            // It used to be sent immediately as (0, 0, 0, 0), meaning "fit
+            // whatever you are given" — which is not what a widget reads it as.
+            // Those numbers become OPTION_APPWIDGET_MIN_WIDTH and friends, and a
+            // widget told it has zero by zero dp to work with is entitled to draw
+            // nothing at all, which is exactly what several of them do.
+            view.post {
+                val widthDp = context.pxToDp(view.width)
+                val heightDp = context.pxToDp(view.height)
+                if (widthDp > 0 && heightDp > 0) {
+                    // Min and max both the real size: the card is a fixed box, so
+                    // there is no range for the widget to choose within.
+                    view.updateAppWidgetSize(Bundle.EMPTY, widthDp, heightDp, widthDp, heightDp)
+                    WidgetNotes.note(
+                        "widget $widgetId: laid out ${view.width}x${view.height}px" +
+                            " (${widthDp}x${heightDp}dp), children=${view.childCount}"
+                    )
+                } else {
+                    // A zero-sized host view is the other way a widget ends up
+                    // blank, and it is not the widget's doing — nothing was given
+                    // any room to draw in.
+                    WidgetNotes.note(
+                        "widget $widgetId: host view laid out at ${view.width}x${view.height}px" +
+                            " — no room to draw, so nothing was asked of the widget"
+                    )
+                }
+            }
+            view
+        } catch (e: Exception) {
+            WidgetNotes.note(
+                "widget $widgetId: createView threw ${e.javaClass.simpleName} ${e.message}"
+            )
+            View(context)
         }
     }
 

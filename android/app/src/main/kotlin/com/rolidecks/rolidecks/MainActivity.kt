@@ -94,6 +94,14 @@ class MainActivity : FlutterActivity() {
     private var pendingWidgetId: Int? = null
     private var pendingWidgetResult: MethodChannel.Result? = null
 
+    /**
+     * Whether the host is currently listening. AppWidgetHost does not report it,
+     * and a host that is not listening receives no RemoteViews at all — a widget
+     * would stay blank for that reason alone, which is worth being able to rule
+     * out.
+     */
+    private var widgetHostListening = false
+
     private var pendingImageCard: String? = null
     private var pendingImageResult: MethodChannel.Result? = null
 
@@ -307,7 +315,11 @@ class MainActivity : FlutterActivity() {
         super.onStart()
         try {
             widgetHost.startListening()
+            widgetHostListening = true
+            WidgetNotes.note("host started listening")
         } catch (e: Exception) {
+            widgetHostListening = false
+            WidgetNotes.note("host could not start listening: ${e.javaClass.simpleName}")
             // Some OEM builds throw here when no widget is bound yet. Not fatal:
             // nothing is listening for, and the next onStart tries again.
         }
@@ -316,6 +328,7 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         try {
             widgetHost.stopListening()
+            widgetHostListening = false
         } catch (e: Exception) {
             // Symmetric with onStart; a host that never started cannot stop.
         }
@@ -387,6 +400,7 @@ class MainActivity : FlutterActivity() {
                 launchIntentUri(call.argument<String>("uri") ?: "")
             )
             "listWidgetProviders" -> onWorker(result) { listWidgetProviders() }
+            "widgetDiagnostics" -> result.success(widgetDiagnostics())
             "bindWidget" -> bindWidget(call.argument<String>("provider") ?: "", result)
             "widgetInfo" -> result.success(
                 widgetInfo(call.argument<Int>("widgetId") ?: -1)
@@ -1057,9 +1071,11 @@ class MainActivity : FlutterActivity() {
         }
 
         if (bound) {
+            WidgetNotes.note("bound $provider to id $widgetId without asking")
             configureOrFinish(widgetId, result)
             return
         }
+        WidgetNotes.note("id $widgetId allocated; asking to bind $provider")
 
         // Ask. The id stays allocated while the dialog is up: it is what the
         // system binds on approval, and it is released in onActivityResult if the
@@ -1091,10 +1107,22 @@ class MainActivity : FlutterActivity() {
      */
     private fun configureOrFinish(widgetId: Int, result: MethodChannel.Result) {
         val info: AppWidgetProviderInfo? = appWidgetManager.getAppWidgetInfo(widgetId)
-        if (info?.configure == null) {
+        if (info == null) {
+            // Bound a moment ago and already unreadable. Reported rather than
+            // returned as a success: a card given this id would draw nothing.
+            WidgetNotes.note("id $widgetId reports no provider straight after binding")
+            releaseWidget(widgetId)
+            result.success(
+                mapOf("ok" to false, "reason" to "the widget did not stay bound")
+            )
+            return
+        }
+        if (info.configure == null) {
+            WidgetNotes.note("id $widgetId ready, no setup screen")
             result.success(mapOf("ok" to true, "widgetId" to widgetId))
             return
         }
+        WidgetNotes.note("id $widgetId needs setup: ${info.configure?.flattenToShortString()}")
         pendingWidgetId = widgetId
         pendingWidgetResult = result
         try {
@@ -1150,6 +1178,76 @@ class MainActivity : FlutterActivity() {
         for (id in known) {
             if (!keep.contains(id)) releaseWidget(id)
         }
+    }
+
+    /**
+     * What the launcher can and cannot see about its widgets.
+     *
+     * The shortcut version of this exists because "nothing appeared" had a
+     * handful of possible causes and no way to tell them apart from the deck.
+     * A widget that draws nothing is the same problem: the id may not be bound,
+     * the host may not be listening, the view may never have been asked for, or
+     * it may have been built and given no room. Each leaves a different trace.
+     */
+    private fun widgetDiagnostics(): Map<String, Any?> {
+        val ids = try {
+            widgetHost.appWidgetIds.toList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val bound = ids.map { id ->
+            val info = try {
+                appWidgetManager.getAppWidgetInfo(id)
+            } catch (e: Exception) {
+                null
+            }
+            if (info == null) {
+                "$id: nothing bound"
+            } else {
+                "$id: ${info.provider?.flattenToShortString()}" +
+                    " min ${pxToDp(info.minWidth)}x${pxToDp(info.minHeight)}dp" +
+                    (if (info.configure != null) " (has setup)" else "")
+            }
+        }
+
+        val providerCount = try {
+            appWidgetManager.installedProviders.size
+        } catch (e: Exception) {
+            -1
+        }
+
+        return mapOf(
+            "installedWidgetProviders" to providerCount,
+            "hostListening" to widgetHostListening,
+            "heldWidgetIds" to ids.size,
+            "boundWidgets" to bound,
+            // Reported, not assumed. Showing the wallpaper put Flutter on a
+            // transparent surface, and a hybrid-composition platform view — which
+            // is what an app widget has to be — composites differently against a
+            // TextureView than a SurfaceView. That makes the surface in use a
+            // prime suspect for a widget that draws nothing, and a suspect is
+            // worth confirming rather than reasoning about.
+            "flutterSurface" to flutterSurfaceKind(),
+            // Newest last, so reading down the list is reading forwards in time.
+            "widgetLog" to WidgetNotes.read()
+        )
+    }
+
+    /** The class Flutter is actually rendering onto, found in the view tree. */
+    private fun flutterSurfaceKind(): String {
+        val root = window?.decorView as? android.view.ViewGroup ?: return "no window"
+        val found = mutableListOf<String>()
+        fun walk(view: android.view.View, depth: Int) {
+            if (depth > 12) return
+            val name = view.javaClass.simpleName
+            if (name.startsWith("Flutter")) found.add(name)
+            if (view is android.view.ViewGroup) {
+                for (i in 0 until view.childCount) walk(view.getChildAt(i), depth + 1)
+            }
+        }
+        walk(root, 0)
+        return if (found.isEmpty()) "none found" else found.joinToString(", ")
     }
 
     private fun isDefaultLauncher(): Boolean {
