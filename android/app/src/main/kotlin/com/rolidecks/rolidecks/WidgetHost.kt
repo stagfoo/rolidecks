@@ -148,9 +148,18 @@ private class WidgetPlatformView(
                 val widthDp = context.pxToDp(view.width)
                 val heightDp = context.pxToDp(view.height)
                 if (widthDp > 0 && heightDp > 0) {
+                    // A fresh Bundle, never the shared empty constant. That
+                    // constant is immutable, and updateAppWidgetSize writes the
+                    // sizes into the bundle it is handed — so passing it throws
+                    // UnsupportedOperationException from inside the framework.
+                    // On a launcher that is not one crash: this runs from a post
+                    // on the main thread every time a widget card is drawn, so
+                    // the home app died, was relaunched, drew the card, and died
+                    // again.
+                    //
                     // Min and max both the real size: the card is a fixed box, so
                     // there is no range for the widget to choose within.
-                    view.updateAppWidgetSize(Bundle.EMPTY, widthDp, heightDp, widthDp, heightDp)
+                    view.updateAppWidgetSize(Bundle(), widthDp, heightDp, widthDp, heightDp)
                     WidgetNotes.note(
                         "widget $widgetId: laid out ${view.width}x${view.height}px" +
                             " (${widthDp}x${heightDp}dp), children=${view.childCount}"

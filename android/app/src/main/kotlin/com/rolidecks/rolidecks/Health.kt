@@ -52,10 +52,36 @@ class Health(context: Context) {
         }
     }
 
-    /** Called once the deck is actually on screen. */
+    /**
+     * Called once the deck is on screen — but the launch is not counted as
+     * survived until it has stayed up for [settleMillis].
+     *
+     * Clearing it on the first frame was not enough, and the crash that proved
+     * it happened one frame later: a widget's size is sent from a post, so the
+     * launcher drew the deck, said it was fine, and then died — every time, with
+     * the flag already cleared, so every relaunch looked like a first one and
+     * widgets were never switched off. A launch is only really a launch if it
+     * outlives the work that startup sets in motion.
+     */
     fun noteLaunchFinished() {
-        prefs.edit().putBoolean(keyLaunchPending, false).apply()
+        prefs.edit().putLong(keySettleAt, System.currentTimeMillis()).apply()
     }
+
+    /**
+     * Whether a launch that reached the deck has now been up long enough to
+     * count. Called on a delay, so nothing has to poll.
+     */
+    fun settleIfStillUp() {
+        val startedAt = prefs.getLong(keySettleAt, 0L)
+        if (startedAt == 0L) return
+        prefs.edit()
+            .putBoolean(keyLaunchPending, false)
+            .remove(keySettleAt)
+            .apply()
+    }
+
+    /** How long the deck has to stay up before the launch counts as survived. */
+    val settleMillis: Long get() = 6000
 
     /**
      * Turns widgets back on, for when the cause has been dealt with.
@@ -110,5 +136,6 @@ class Health(context: Context) {
         const val keySafeMode = "safeMode"
         const val keyLastCrash = "lastCrash"
         const val keyCrashCount = "crashCount"
+        const val keySettleAt = "settleAt"
     }
 }
