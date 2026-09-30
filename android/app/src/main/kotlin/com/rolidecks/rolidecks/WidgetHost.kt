@@ -8,6 +8,8 @@ import android.content.Context
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
@@ -96,7 +98,27 @@ private class WidgetPlatformView(
     appWidgetManager: AppWidgetManager
 ) : PlatformView {
 
-    private val view: View = build(context, widgetId, host, appWidgetManager)
+    /**
+     * The widget sits inside a frame of our own rather than being handed over
+     * directly.
+     *
+     * An AppWidgetHostView measures itself from the provider's declared minimum,
+     * and a widget asking for more height than a three-row card has drew straight
+     * out of the top of the card. The frame is what Flutter positions, it is
+     * exactly the size Flutter gives it, and it clips — so a widget that wants
+     * more room is cropped to the card instead of escaping it.
+     */
+    private val view: View = FrameLayout(context).apply {
+        clipChildren = true
+        clipToPadding = true
+        addView(
+            build(context, widgetId, host, appWidgetManager),
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
 
     private fun build(
         context: Context,

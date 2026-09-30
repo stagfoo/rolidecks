@@ -8,13 +8,23 @@ import 'theme.dart';
 
 /// The Android app widget on a widget card.
 ///
-/// Hybrid composition rather than a plain [AndroidView]: a widget's content is
-/// RemoteViews owned by another process, and in the virtual-display mode a plain
-/// AndroidView uses, its taps land at the wrong coordinates and its list widgets
-/// do not scroll at all. [PlatformViewLink] with an expensive controller is the
-/// mode that composites the real view into the Flutter scene, which costs a
-/// little on every frame the card is on screen and is the only mode a widget is
-/// actually usable in.
+/// Rendered through a texture layer — [PlatformViewsService.initSurfaceAndroidView]
+/// — rather than either of the alternatives, both of which were tried and are
+/// worse here:
+///
+/// * Full hybrid composition ([PlatformViewsService.initExpensiveAndroidView])
+///   puts the real Android view into the window, which forces Flutter to render
+///   its own content through overlay FlutterImageViews. Against this launcher's
+///   transparent window that produced the two most visible faults there have
+///   been: the wallpaper disappeared, and a stale frame of the deck stayed
+///   painted behind everything like a screenshot of itself.
+/// * A virtual display ([PlatformViewsService.initAndroidView]) keeps the
+///   compositing simple but delivers touches at the wrong coordinates, so a
+///   widget's buttons land next to where they were pressed.
+///
+/// The texture layer draws the view into a texture Flutter composites like any
+/// other layer — so the transparent window and the wallpaper behind it keep
+/// working — while touches are still forwarded to the real view underneath.
 class WidgetCardBody extends StatelessWidget {
   const WidgetCardBody({
     super.key,
@@ -22,6 +32,7 @@ class WidgetCardBody extends StatelessWidget {
     required this.onCard,
     this.onPick,
     this.safeMode = false,
+    this.preview = false,
   });
 
   /// The host's id for the bound widget, or null when the card has none yet.
@@ -41,6 +52,14 @@ class WidgetCardBody extends StatelessWidget {
   /// into it again.
   final bool safeMode;
 
+  /// Drawn in the editor rather than on the deck, where a stand-in is enough.
+  ///
+  /// Not just to save the work. AppWidgetHost keeps one view per widget id, so a
+  /// second host view for the widget already on the deck takes that registration
+  /// over — and when the editor closes, the card is left holding the view that no
+  /// longer receives updates.
+  final bool preview;
+
   static const _viewType = 'rolidecks/widget';
 
   @override
@@ -48,6 +67,7 @@ class WidgetCardBody extends StatelessWidget {
     if (safeMode) return _safe(context);
     final id = widgetId;
     if (id == null) return _empty(context);
+    if (preview) return _stand(context);
 
     return Padding(
       // Inset from the card's edges so the widget sits on the card rather than
@@ -56,6 +76,11 @@ class WidgetCardBody extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: PlatformViewLink(
+          // Keyed on the widget itself, so choosing a different one builds a new
+          // platform view instead of reusing the one already there. Without this
+          // the id changes, nothing rebuilds, and the card keeps showing the old
+          // widget until something else forces the subtree to be recreated.
+          key: ValueKey(id),
           viewType: _viewType,
           surfaceFactory: (context, controller) => AndroidViewSurface(
             controller: controller as AndroidViewController,
@@ -66,7 +91,7 @@ class WidgetCardBody extends StatelessWidget {
             gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},
           ),
           onCreatePlatformView: (params) {
-            return PlatformViewsService.initExpensiveAndroidView(
+            return PlatformViewsService.initSurfaceAndroidView(
               id: params.id,
               viewType: _viewType,
               layoutDirection: TextDirection.ltr,
@@ -78,6 +103,23 @@ class WidgetCardBody extends StatelessWidget {
               ..create();
           },
         ),
+      ),
+    );
+  }
+
+  /// The stand-in shown in the editor in place of the real widget.
+  Widget _stand(BuildContext context) {
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.widgets_rounded, size: 16, color: onCard),
+          const SizedBox(width: 6),
+          Text(
+            'your widget sits here',
+            style: deckText(size: 12, weight: 600, color: onCard),
+          ),
+        ],
       ),
     );
   }

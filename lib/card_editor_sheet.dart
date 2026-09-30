@@ -376,6 +376,10 @@ class _CardEditorSheetState extends State<_CardEditorSheet> {
       card: _draft.copyWith(name: _effectiveName),
       height: height,
       focused: true,
+      // A stand-in for the widget, not the widget: the real one is on the deck
+      // behind this sheet, and the host would hand its registration to whichever
+      // view was built last.
+      preview: true,
       apps: widget.apps,
       totalInstalled: widget.apps.length,
       imagePath: _imagePath,
