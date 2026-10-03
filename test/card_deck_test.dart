@@ -498,12 +498,28 @@ void main() {
 
     test('the all-apps card is never a widget card', () {
       expect(CardDeck.allAppsCard.isWidget, isFalse);
-      // And it stays itself if something tries.
+      // And it stays itself if something tries. The isWidget check is the point:
+      // a widget card resolves to no apps, so letting it through would blank the
+      // app list and every shortcut with it. Asserting only isAllApps here let
+      // that through once already.
       final deck = CardDeck.seed().updateCard(
         CardDeck.allAppsId,
         (card) => card.copyWith(isWidget: true),
       );
       expect(deck.cards.last.isAllApps, isTrue);
+      expect(deck.cards.last.isWidget, isFalse);
+      expect(deck.cards.last.rows, 1);
+    });
+
+    test('still lists everything after being restyled', () {
+      // The end of the same failure: whatever is done to this card, it has to go
+      // on reporting every installed app and shortcut.
+      final deck = CardDeck.seed().updateCard(
+        CardDeck.allAppsId,
+        (card) => card.copyWith(name: 'everything', isWidget: true, appRows: 3),
+      );
+      final installed = [app('com.a'), app('com.b')];
+      expect(deck.cards.last.resolve(installed), hasLength(2));
     });
   });
 

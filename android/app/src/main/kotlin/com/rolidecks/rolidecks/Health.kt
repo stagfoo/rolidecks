@@ -40,11 +40,28 @@ class Health(context: Context) {
      * Called as the activity starts. Decides whether this launch is a safe one.
      */
     fun noteLaunchStarted() {
-        val previousNeverFinished = prefs.getBoolean(keyLaunchPending, false)
+        val pending = prefs.getBoolean(keyLaunchPending, false)
+        val reachedDeck = prefs.getBoolean(keyReachedDeck, false)
+        val crashed = prefs.getBoolean(keyCrashedThisLaunch, false)
+
+        // A launch ended badly if it never got the deck on screen, or if a crash
+        // was recorded against it.
+        //
+        // Not "did not finish": a home app is killed all the time with nothing
+        // wrong - swiped out of recents, reclaimed the moment you open something
+        // heavy - and counting every one of those as a crash turned widgets off
+        // and announced a crash that never happened. Every real crash goes
+        // through a handler that writes one down, so the record is the signal
+        // and mere death is not.
+        val failed = pending && (!reachedDeck || crashed)
+
         prefs.edit()
             .putBoolean(keyLaunchPending, true)
+            .putBoolean(keyReachedDeck, false)
+            .putBoolean(keyCrashedThisLaunch, false)
             .apply()
-        if (previousNeverFinished) {
+
+        if (failed) {
             prefs.edit()
                 .putBoolean(keySafeMode, true)
                 .putInt(keyCrashCount, crashCount + 1)
@@ -53,35 +70,16 @@ class Health(context: Context) {
     }
 
     /**
-     * Called once the deck is on screen — but the launch is not counted as
-     * survived until it has stayed up for [settleMillis].
+     * Called once the deck is on screen.
      *
-     * Clearing it on the first frame was not enough, and the crash that proved
-     * it happened one frame later: a widget's size is sent from a post, so the
-     * launcher drew the deck, said it was fine, and then died — every time, with
-     * the flag already cleared, so every relaunch looked like a first one and
-     * widgets were never switched off. A launch is only really a launch if it
-     * outlives the work that startup sets in motion.
+     * Records that this launch got that far rather than declaring it survived.
+     * Reaching the deck is not the end of the danger - the crash that started
+     * all this came one frame later, from a widget sizing itself in a post - so
+     * what closes a launch out is the next one finding no crash against it.
      */
     fun noteLaunchFinished() {
-        prefs.edit().putLong(keySettleAt, System.currentTimeMillis()).apply()
+        prefs.edit().putBoolean(keyReachedDeck, true).apply()
     }
-
-    /**
-     * Whether a launch that reached the deck has now been up long enough to
-     * count. Called on a delay, so nothing has to poll.
-     */
-    fun settleIfStillUp() {
-        val startedAt = prefs.getLong(keySettleAt, 0L)
-        if (startedAt == 0L) return
-        prefs.edit()
-            .putBoolean(keyLaunchPending, false)
-            .remove(keySettleAt)
-            .apply()
-    }
-
-    /** How long the deck has to stay up before the launch counts as survived. */
-    val settleMillis: Long get() = 6000
 
     /**
      * Turns widgets back on, for when the cause has been dealt with.
@@ -93,6 +91,7 @@ class Health(context: Context) {
         prefs.edit()
             .putBoolean(keySafeMode, false)
             .putBoolean(keyLaunchPending, false)
+            .putBoolean(keyCrashedThisLaunch, false)
             .apply()
     }
 
@@ -100,6 +99,12 @@ class Health(context: Context) {
     fun recordDartError(message: String) {
         if (message.isEmpty()) return
         prefs.edit().putString(keyLastCrash, "dart: ${message.take(600)}").apply()
+        markCrashed()
+    }
+
+    /** Marks this launch as one that crashed, whatever else it managed. */
+    private fun markCrashed() {
+        prefs.edit().putBoolean(keyCrashedThisLaunch, true).apply()
     }
 
     fun recordCrash(thread: String, error: Throwable) {
@@ -110,6 +115,7 @@ class Health(context: Context) {
         prefs.edit()
             .putString(keyLastCrash, "on $thread: $short")
             .apply()
+        markCrashed()
     }
 
     /**
@@ -136,6 +142,7 @@ class Health(context: Context) {
         const val keySafeMode = "safeMode"
         const val keyLastCrash = "lastCrash"
         const val keyCrashCount = "crashCount"
-        const val keySettleAt = "settleAt"
+        const val keyReachedDeck = "reachedDeck"
+        const val keyCrashedThisLaunch = "crashedThisLaunch"
     }
 }

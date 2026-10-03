@@ -436,11 +436,6 @@ class MainActivity : FlutterActivity() {
             }
             "launcherReady" -> {
                 health.noteLaunchFinished()
-                // The launch counts as survived only once it has stayed up.
-                // Anything startup kicks off — a widget sizing itself from a
-                // post, an icon decode — lands after the first frame, and a
-                // crash there is exactly as fatal to a home app as one before it.
-                main.postDelayed({ health.settleIfStillUp() }, health.settleMillis)
                 result.success(null)
             }
             "leaveSafeMode" -> {

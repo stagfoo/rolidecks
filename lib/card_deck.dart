@@ -130,7 +130,11 @@ class DeckCard {
       imageOffset: imageOffset ?? this.imageOffset,
       showAppLabels: showAppLabels ?? this.showAppLabels,
       appRows: clampAppRows(appRows ?? this.appRows),
-      isWidget: isWidget ?? this.isWidget,
+      // Never on the all-apps card. It is the way to reach everything installed,
+      // and a widget card resolves to no apps at all - so letting this through
+      // would blank the app list and every shortcut with it, with no control
+      // left anywhere to undo it.
+      isWidget: isAllApps ? false : (isWidget ?? this.isWidget),
       // An explicit flag to clear it: passing null cannot mean "unbind", since
       // null is also what "leave it alone" looks like through a copyWith.
       widgetId: clearWidgetId ? null : (widgetId ?? this.widgetId),
